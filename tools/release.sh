@@ -8,13 +8,21 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 die() { echo "release: $*" >&2; exit 1; }
 
+# A git that runs on this Mac (an old Intel-only git earlier in PATH fails with "Bad CPU type").
+GIT=$(command -v git || true)
+if ! "$GIT" --version >/dev/null 2>&1; then GIT=/usr/bin/git; fi
+"$GIT" --version >/dev/null 2>&1 || die "no working git found"
+git() { "$GIT" "$@"; }
+
 VERSION=$(tr -d ' \n' < version.txt)
 [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+)*$ ]] || die "version.txt must hold a version like 1.2.0"
 [ -f signing_key.pem ] || die "signing_key.pem is missing (restore it from your backup)"
 [ -f secrets.defaults ] || die "secrets.defaults is missing (the Google sign-in client)"
 command -v idf.py >/dev/null || die "run '. ~/esp/esp-idf/export.sh' first"
 command -v gh >/dev/null || die "the GitHub CLI (gh) is needed"
-[ -z "$(git status --porcelain)" ] || die "commit your changes first"
+CHANGES=$(git status --porcelain) || die "git status failed"
+[ -z "$CHANGES" ] || die "commit your changes first"
+[ -z "$(git log --oneline @{u}..HEAD 2>/dev/null)" ] || die "push your commits first (git push)"
 ! git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null || die "v$VERSION exists already: raise version.txt"
 
 idf.py build
