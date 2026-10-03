@@ -1,0 +1,5 @@
+ESP Web Tools 10.4.0 (Apache-2.0, see LICENSE), unmodified copy of dist/web/ from the npm package:
+  https://registry.npmjs.org/esp-web-tools/-/esp-web-tools-10.4.0.tgz
+  sha1 594e2c7c06dced84bfc6dd1d0ee80e591867769f
+  integrity sha512-3pwkeFFm5Fj7UQo8SJNYK5RXrtNCpq6X9QoI6bMT4GBZWgrJqjn0YvM9ihG74BtMoSFYXfmDtkehuxe50PTMPQ==
+Project: https://github.com/esphome/esp-web-tools

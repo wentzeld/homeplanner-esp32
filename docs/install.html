@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install HomePlanner</title>
+<script type="module" src="vendor/esp-web-tools/install-button.js"></script>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f7f9; --fg:#1d2330; --muted:#5f6673; --accent:#1a73e8; --card:#fff; --line:#dde1e7;
+          --warn-bg:#fff4e5; --warn-line:#f0b45b; --on-accent:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e8eaed; --muted:#9aa0a6; --accent:#8ab4f8; --card:#181b22; --line:#2a2f3a;
+          --warn-bg:#2b2215; --warn-line:#8a6420; --on-accent:#0f1115; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; }
+  main { max-width:720px; margin:4vh auto; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:28px; }
+  h1 { margin-top:0; } a { color:var(--accent); } li { margin:.3rem 0; } .muted { color:var(--muted); }
+  code { font-size:.92em; overflow-wrap:anywhere; }
+  .warn { background:var(--warn-bg); border:1px solid var(--warn-line); border-radius:10px; padding:12px 16px; margin:1.2rem 0; }
+  .install { border:1px solid var(--line); border-radius:12px; padding:18px; margin:1.2rem 0; }
+  .install button { font:inherit; font-weight:600; padding:10px 22px; border:0; border-radius:999px; cursor:pointer;
+          background:var(--accent); color:var(--on-accent); }
+  .install [slot="unsupported"], .install [slot="not-allowed"] { display:block; }
+  @media (max-width:520px) { main { padding:20px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Install HomePlanner on a panel</h1>
+  <p>Put HomePlanner on an Elecrow CrowPanel from your computer's web browser: no programs to install, no command line.
+    It takes about two minutes.</p>
+
+  <div class="warn" role="note">
+    <b>Flicker warning:</b> while it is being installed and when it restarts, the panel's screen may flicker, flash or go
+    dark. If flashing lights affect you, look away or watch from the side until it shows the setup screen.
+  </div>
+
+  <h2>What you need</h2>
+  <ul>
+    <li>An <b>Elecrow CrowPanel Advance 10.1" ESP32-P4, version 1.2</b> (with the ESP32-C6 Wi-Fi chip). Other panels and
+      versions are not supported: this firmware won't work on them.</li>
+    <li>A computer with <b>Google Chrome or Microsoft Edge</b>. Safari, Firefox and phones or tablets can't install
+      firmware (they don't have Web Serial).</li>
+    <li>A <b>USB-C data cable</b> (some cables only charge) plugged into the panel's USB-C port marked <b>UART</b>.</li>
+    <li>The driver for the panel's USB chip (a WCH CH340/CH343):
+      <ul>
+        <li><b>macOS:</b> install WCH's <a href="https://www.wch-ic.com/downloads/CH34XSER_MAC_ZIP.html">CH34x driver</a>,
+          then allow it in <i>System Settings → Privacy &amp; Security</i> and restart the Mac. The panel shows up as
+          <code>wchusbserial…</code>.</li>
+        <li><b>Windows:</b> usually installed automatically. If no port appears, install WCH's
+          <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html">CH341SER driver</a>. The panel shows up as
+          <code>USB-SERIAL CH340 (COM…)</code>.</li>
+        <li><b>Linux:</b> the driver is built in. Your user needs access to serial ports: run
+          <code>sudo usermod -aG dialout $USER</code> and log out and in again. If the port disappears right after you
+          plug in, remove the <code>brltty</code> package (it grabs CH340 chips by mistake).</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h2>Install</h2>
+  <ol>
+    <li>Connect the panel's <b>UART</b> port to your computer. Close other programs that use the port (Arduino IDE,
+      <code>idf.py monitor</code>, serial terminals).</li>
+    <li>Click <b>Install HomePlanner</b> below and choose the panel's port in the list.</li>
+    <li>Choose <b>Install HomePlanner</b> and answer the erase question (see <a href="#erase">below</a>), then
+      <b>Install</b>. Keep the cable plugged in until it says the installation is complete.</li>
+  </ol>
+
+  <div class="install">
+    <p id="fw-version" class="muted">Checking for the latest version…</p>
+    <esp-web-install-button id="installer" manifest="firmware/manifest.json">
+      <button slot="activate">Install HomePlanner</button>
+      <span slot="unsupported"><b>This browser can't install firmware.</b> Open this page in Google Chrome or Microsoft
+        Edge on a computer (not Safari, Firefox, or a phone or tablet).</span>
+      <span slot="not-allowed"><b>Installing only works over a secure connection.</b> Open this page at its
+        <code>https://</code> address.</span>
+    </esp-web-install-button>
+  </div>
+
+  <h2 id="erase">Erase the panel, or keep its settings?</h2>
+  <p>The installer asks whether to erase the panel first.</p>
+  <ul>
+    <li><b>Erase</b> for a <b>new</b> panel (with Elecrow's demo), a <b>second-hand</b> panel, or one whose owner you
+      don't know. This removes everything on it, including saved Wi-Fi and sign-ins.</li>
+    <li><b>Keep settings</b> (don't erase) only when you're reinstalling <b>your own</b> HomePlanner panel: its Wi-Fi,
+      Google sign-in and settings stay.</li>
+    <li>Already running HomePlanner? You don't need this page: tap <b>⚙ → Software update</b> on the panel.</li>
+  </ul>
+
+  <h2>After installing</h2>
+  <ol>
+    <li>The panel restarts into setup and shows a QR code with its own Wi-Fi name (<b>HomePlanner-…</b>) and password.
+      (After <i>Keep settings</i>, it starts with your calendar instead.)</li>
+    <li>On your phone, scan the QR code to join the panel's Wi-Fi hotspot, then follow
+      <a href="https://github.com/wentzeld/homeplanner-esp32#setting-it-up-at-home">Setting it up at home</a>.</li>
+  </ol>
+
+  <h2>If it doesn't work</h2>
+  <ul>
+    <li><b>No port in the list:</b> try another cable (it must carry data), the <b>UART</b> port, and check the driver above.</li>
+    <li><b>"Failed to connect" or the port is busy:</b> close other programs using the port, unplug the panel for a few
+      seconds, plug it back in and try again.</li>
+    <li><b>The panel stays dark or restarts over and over:</b> install again and choose <b>Erase</b>.</li>
+  </ul>
+
+  <p class="muted">The installer runs entirely in your browser (<a href="https://github.com/esphome/esp-web-tools">ESP Web
+    Tools</a>, served from this site); nothing is sent anywhere. The firmware comes from the latest
+    <a href="https://github.com/wentzeld/homeplanner-esp32/releases">HomePlanner release</a> and is signed, so the panel
+    only accepts updates from the same project. <a href="index.html">About HomePlanner</a> ·
+    <a href="privacy.html">Privacy</a></p>
+</main>
+<script>
+  // Show which version will be installed; hide the button until a release has the installer files.
+  (async () => {
+    const label = document.getElementById("fw-version");
+    const installer = document.getElementById("installer");
+    try {
+      const res = await fetch("firmware/manifest.json", { cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
+      const manifest = await res.json();
+      label.textContent = "Installs HomePlanner " + manifest.version + ".";
+    } catch (e) {
+      installer.hidden = true;
+      label.textContent = "The installer files aren't published yet. Please try again later.";
+    }
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,77 @@
+# Publishes docs/ on GitHub Pages (sign-in relay, privacy policy, browser installer) together with the
+# installer files of the newest release that has them, in docs/firmware/ on the site.
+# Nothing is built here: the firmware is built and signed on the owner's computer by tools/release.sh.
+# One-time setup: Settings > Pages > Build and deployment > Source = GitHub Actions.
+name: Pages
+
+on:
+  release:
+    types: [published]
+  push:
+    branches: [main]
+    paths: ["docs/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}  # the site always comes from main, also for a release
+          persist-credentials: false
+
+      - name: Copy the site (plain files, no Jekyll)
+        run: |
+          mkdir _site
+          cp -R docs/. _site/
+
+      - name: Add the newest release's installer files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          files="bootloader.bin partition-table.bin ota_data_initial.bin homeplanner.bin manifest.json"
+          # Newest published (not draft, not pre-release) release that has all five files.
+          tag=$(gh api "repos/$REPO/releases?per_page=30" --jq '
+            [.[] | select(.draft | not) | select(.prerelease | not)
+                 | select([.assets[].name] as $a
+                          | ["bootloader.bin","partition-table.bin","ota_data_initial.bin","homeplanner.bin","manifest.json"]
+                          | all(. as $f | $a | index($f)))]
+            | first | .tag_name // empty')
+          if [ -z "$tag" ]; then
+            echo "::warning::No release has the installer files yet; deploying the site without firmware/."
+            exit 0
+          fi
+          mkdir -p _site/firmware
+          for f in $files; do
+            gh release download "$tag" --repo "$REPO" --pattern "$f" --dir _site/firmware
+            [ -s "_site/firmware/$f" ] || { echo "::error::$f is missing from $tag"; exit 1; }
+          done
+          # Every part the manifest names must be there.
+          jq -e '.builds[0].chipFamily == "ESP32-P4"' _site/firmware/manifest.json >/dev/null
+          for p in $(jq -r '.builds[].parts[].path' _site/firmware/manifest.json); do
+            [ -s "_site/firmware/$p" ] || { echo "::error::manifest.json names $p, which $tag lacks"; exit 1; }
+          done
+          echo "Installer files from $tag (version $(jq -r .version _site/firmware/manifest.json))."
+          ls -l _site/firmware
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

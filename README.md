@@ -31,6 +31,14 @@ This is the standalone firmware version of [HomePlanner for the Raspberry Pi](ht
   calendar*, then share it with everyone in the family).
 - Home **Wi-Fi** (2.4 GHz).
 
+## Install from your browser
+
+Open **[wentzeld.github.io/homeplanner-esp32/install.html](https://wentzeld.github.io/homeplanner-esp32/install.html)**
+in Chrome or Edge on a computer, connect the panel's **UART** USB-C port with a data cable and click
+**Install HomePlanner**. The page explains the USB driver and whether to erase the panel (yes for a new or
+second-hand panel). Panels that already run HomePlanner update themselves (**⚙ → Software update**).
+Developers can build and flash by USB instead (see *Building and flashing* below).
+
 ## Setting it up at home
 
 1. **Power the panel.** It shows a QR code and its own Wi-Fi name and password.
@@ -100,7 +108,9 @@ sign-in are kept, the calendar cache is rebuilt.
 2. `. ~/esp/esp-idf/export.sh && tools/release.sh "What's new in this version"`
 
 The script builds the signed firmware, tags `v1.2.0`, pushes the tag and publishes a GitHub release with
-`homeplanner.bin`. Panels see it within a day (or at once with *Check now*). A new version has 5 minutes after
+`homeplanner.bin` and the browser installer's files (`bootloader.bin`, `partition-table.bin`, `ota_data_initial.bin`,
+`manifest.json`, made by `tools/gen_manifest.py` in `build/release/`). Publishing the release starts the *Pages*
+workflow, which puts these files on the install page. Panels see it within a day (or at once with *Check now*). A new version has 5 minutes after
 its first start to get online; otherwise the panel goes back to the previous version and says so.
 
 Release files contain the Google client ID and secret from `secrets.defaults`, like any installed app; that alone
@@ -116,8 +126,9 @@ an `https` page on a public domain, so a tiny static page (`docs/oauth.html`, pu
 passes the one-time code on to the panel in the home. It stores nothing and only forwards to private
 network addresses (`192.168.x.x`, `10.x.x.x`, `172.16–31.x.x`, `*.local`).
 
-1. **GitHub Pages:** in the repository's *Settings → Pages*, publish from the `main` branch, folder `/docs`.
-   Check that `https://<you>.github.io/homeplanner-esp32/oauth.html` opens.
+1. **GitHub Pages:** in the repository's *Settings → Pages*, set *Source* to **GitHub Actions**. The *Pages*
+   workflow (`.github/workflows/pages.yml`) publishes `docs/` plus the newest release's installer files on every
+   change to `docs/` and every release (or run it by hand under *Actions*). Check that `https://<you>.github.io/homeplanner-esp32/oauth.html` opens.
 2. **Google Cloud project** ([console.cloud.google.com](https://console.cloud.google.com)): create one (or reuse
    one) and enable the **Google Calendar API** (*APIs & Services → Library*).
 3. **Consent screen** (*Google Auth Platform*): audience **External**; app name *HomePlanner*; support email;
@@ -153,7 +164,8 @@ Keep `secrets.defaults` out of git anyway (it's in `.gitignore`).
   (no timezone database on the device).
 - `components/gauth` — Google sign-in (OAuth + PKCE) and access tokens; `components/gcal` — Calendar API calls.
 - `components/web` — the settings page: setup hotspot (captive portal) and the home-network page with one-time
-  codes and session cookies. `docs/` — the sign-in relay page, home page and privacy policy (GitHub Pages).
+  codes and session cookies. `docs/` — the sign-in relay page, home page, privacy policy and browser installer (GitHub Pages,
+  with ESP Web Tools in `docs/vendor/`).
 - `components/model` — background sync and the flash cache (LittleFS); `components/ui` — the LVGL screens.
 - `components/update` — over-the-air updates (GitHub releases, uploads, rollback); `tools/ota.sh`, `tools/release.sh`.
 
@@ -167,7 +179,8 @@ cmake -S tests/host -B build/host -G Ninja && cmake --build build/host && ctest 
 
 Reference data is generated, not committed: timezone offsets from Python's `zoneinfo`, and iCal expansion from the
 Raspberry Pi version (`recurring_ical_events`; needs that repo with its `.venv` next to this one, otherwise
-`test_ical` is skipped). The relay page is tested with Node when it's installed.
+`test_ical` is skipped). The relay page is tested with Node and the installer's manifest generator
+(`tests/tools/test_gen_manifest.py`) with Python 3, when they're installed.
 
 ## Troubleshooting
 

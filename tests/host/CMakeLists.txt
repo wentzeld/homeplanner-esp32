@@ -119,6 +119,12 @@ if(NODE)
   add_test(NAME relay_page COMMAND ${NODE} ${ROOT}/tests/web/relay_test.js)
 endif()
 
+# --- The browser installer's manifest (tools/gen_manifest.py), when python3 is installed ---
+find_program(PYTHON3 python3)
+if(PYTHON3)
+  add_test(NAME gen_manifest COMMAND ${PYTHON3} ${ROOT}/tests/tools/test_gen_manifest.py)
+endif()
+
 # --- Over-the-air updates: versions and GitHub's release answer ---
 add_library(hp_update STATIC ${ROOT}/components/update/update_logic.c)
 target_include_directories(hp_update PUBLIC ${ROOT}/components/update/include)

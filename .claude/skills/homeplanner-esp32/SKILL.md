@@ -47,9 +47,10 @@ what a new session needs to make a change and ship it. The README covers end-use
 | `components/ui` | LVGL screens: `ui_week.c` (week view, legend, details), `ui_form.c` (add/edit), `ui_menu.c` (⚙ menu, QR screens, software update), `ui_basic.c` |
 | `components/update` | OTA: GitHub release check, install, upload, rollback; `update_logic.c` is host-tested |
 | `components/net`, `components/weather`, `components/board` | Wi-Fi/HTTPS/downloads, Open-Meteo, hardware + LVGL port |
-| `docs/` | GitHub Pages: `oauth.html` + `relay.js` (sign-in relay), `privacy.html`, `index.html`, `VERIFY.md` |
-| `tests/host/` | Host unit tests (Unity); `tests/web/relay_test.js` (node) |
-| `tools/` | `ota.sh` (install over Wi-Fi), `release.sh` (GitHub release), fixture/TZ generators |
+| `docs/` | GitHub Pages: `oauth.html` + `relay.js` (sign-in relay), `privacy.html`, `index.html`, `install.html` (browser installer, ESP Web Tools 10.4.0 vendored in `docs/vendor/esp-web-tools/`), `VERIFY.md` |
+| `.github/workflows/pages.yml` | Deploys `docs/` + the newest release's installer files (`/firmware/`) to Pages; no build, no secrets |
+| `tests/host/` | Host unit tests (Unity); `tests/web/relay_test.js` (node); `tests/tools/test_gen_manifest.py` (python3) |
+| `tools/` | `ota.sh` (install over Wi-Fi), `release.sh` (GitHub release), `gen_manifest.py` (installer files), fixture/TZ generators |
 
 ## Build, test, install
 ```bash
@@ -75,11 +76,23 @@ tools/ota.sh                      # install build/homeplanner.bin on the panel o
 1. Raise `version.txt` (semver; must be newer than every released or rolled-back version).
 2. Owner commits and pushes (`git commit -S …`, `git push`).
 3. Owner runs `. ~/esp/esp-idf/export.sh && tools/release.sh "What's new"`: it checks for a clean, pushed tree,
-   builds, verifies the signature, refuses test builds, creates a signed tag `v<version>`, pushes it and
-   publishes the GitHub release with `homeplanner.bin`. It resumes if the tag exists on HEAD without a release.
-4. Panels check daily (⚙ → Software update → Check now to force). A version must get online within 5 minutes
+   builds, verifies the signature, refuses test/demo builds and builds without `CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y`,
+   collects `build/release/` with `tools/gen_manifest.py` (from `build/flasher_args.json`), creates a signed tag
+   `v<version>`, pushes it and publishes the GitHub release with five files: `homeplanner.bin` (OTA; panels pick the
+   asset with exactly that name) plus the browser installer's `bootloader.bin` 0x2000, `partition-table.bin` 0x8000,
+   `ota_data_initial.bin` 0x19000 and `manifest.json` (app at 0x20000). It resumes if the tag exists on HEAD: it
+   creates a missing release, or uploads (`--clobber`) the files an existing release lacks and publishes a draft.
+4. Publishing the release triggers `.github/workflows/pages.yml`, which copies `docs/` and the newest release that has
+   all five files into the Pages site (`/firmware/`), so `docs/install.html` installs that version. Without such a
+   release it deploys the site without `/firmware/` (the sign-in relay keeps working).
+5. Panels check daily (⚙ → Software update → Check now to force). A version must get online within 5 minutes
    of its first start (`update_mark_good()`), otherwise the bootloader rolls back and the panel says so.
 - Release files contain the Google client ID/secret (accepted by the owner).
+- **Pages deploys via GitHub Actions** (one-time: *Settings → Pages → Source = GitHub Actions*; before that it was
+  "deploy from branch main /docs"). After switching (or any Pages change), re-test Google sign-in through
+  `docs/oauth.html` (the relay must stay at `wentzeld.github.io/homeplanner-esp32/oauth.html`).
+- The installer offers erase or keep: keeping settings relies on `/storage` being formatted when it can't be mounted
+  (`format_if_mount_failed = true` in `model.c`); keep that.
 
 ## Things that bit us (don't reintroduce)
 - **Blue screen flashes:** the display reads its picture from PSRAM; anything that pauses PSRAM starves it.
