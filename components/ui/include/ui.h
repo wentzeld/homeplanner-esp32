@@ -39,6 +39,11 @@ typedef enum { UI_QR_MANAGE, UI_QR_FINISH, UI_QR_EXPIRED } ui_qr_kind_t;
 void ui_show_qr(ui_qr_kind_t kind);
 void ui_close_qr(void);
 
+// The update status changed (LVGL lock held): shows the "Updating..." screen during installs.
+void ui_update_changed(void);
+// A short message at the bottom of the screen (LVGL lock held).
+void ui_notice(const char *text);
+
 // The calendar (week view). Data comes from the model component; call ui_week_update() when it
 // changes (with the LVGL lock held).
 void ui_week_show(const hp_settings_t *settings);

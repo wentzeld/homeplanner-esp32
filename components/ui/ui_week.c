@@ -143,6 +143,11 @@ void ui_toast(const char *text) {
     lv_timer_set_repeat_count(s_toast_timer, 1);
 }
 
+void ui_notice(const char *text) {  // like a toast, but stays long enough to read a sentence
+    ui_toast(text);
+    lv_timer_set_period(s_toast_timer, 8000);
+}
+
 static void close_details(void) {
     if (D.shade) lv_obj_delete(D.shade);
     memset(&D, 0, sizeof D);

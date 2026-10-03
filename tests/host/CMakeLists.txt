@@ -118,3 +118,13 @@ find_program(NODE node)
 if(NODE)
   add_test(NAME relay_page COMMAND ${NODE} ${ROOT}/tests/web/relay_test.js)
 endif()
+
+# --- Over-the-air updates: versions and GitHub's release answer ---
+add_library(hp_update STATIC ${ROOT}/components/update/update_logic.c)
+target_include_directories(hp_update PUBLIC ${ROOT}/components/update/include)
+target_link_libraries(hp_update PUBLIC cjson)
+target_compile_options(hp_update PRIVATE -Wall -Wextra -Werror)
+
+add_executable(test_update test_update.c)
+target_link_libraries(test_update hp_update unity)
+add_test(NAME update COMMAND test_update)

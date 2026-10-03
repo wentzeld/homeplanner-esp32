@@ -41,6 +41,8 @@
   h3 { font-size:1rem; margin:1rem 0 .2rem; }
   .pick { display:flex; gap:10px; align-items:center; margin:8px 0; color:var(--fg); font-size:1rem; }
   .pick input { width:auto; flex:none; margin:0; }
+  pre { white-space:pre-wrap; font:inherit; margin:.4rem 0; }
+  progress { width:100%; margin-top:.6rem; }
   [hidden] { display:none !important; }
 </style>
 </head>
@@ -144,6 +146,24 @@
     </div>
     <label for="wake">After a touch at night, stay on for (minutes)</label>
     <input id="wake" type="number" min="1" max="60" value="5">
+  </section>
+
+  <section id="update_section" class="run_only">
+    <h2>Software update</h2>
+    <p id="update_version" class="muted"></p>
+    <p id="update_status" role="status"></p>
+    <pre id="update_notes" class="muted" hidden></pre>
+    <div class="row">
+      <button id="update_check" type="button">Check now</button>
+      <button id="update_install" type="button" hidden>Install</button>
+    </div>
+    <details>
+      <summary>Install a firmware file (for developers)</summary>
+      <label for="update_file">Signed <code>homeplanner.bin</code></label>
+      <input id="update_file" type="file" accept=".bin,application/octet-stream">
+      <progress id="update_progress" max="100" value="0" hidden></progress>
+      <p class="muted">Or from the project folder on your Mac: <code>tools/ota.sh</code></p>
+    </details>
   </section>
 
   <p id="save_note" class="muted" hidden>Saving these settings restarts the panel (about 30 seconds).</p>
@@ -478,6 +498,83 @@ $("calendar_id").addEventListener("change", () => {
   renderGoogle();
 });
 
+// --- Software update -------------------------------------------------------------------------------
+
+let updateTimer = null;
+
+function renderUpdate(u) {
+  $("update_version").textContent = `This panel runs version ${u.current}.`;
+  const st = $("update_status"), notes = $("update_notes");
+  notes.hidden = u.state !== "available";
+  $("update_install").hidden = u.state !== "available";
+  if (u.state === "available") {
+    say(st, `Version ${u.latest} is available.`, "ok");
+    notes.textContent = u.notes || "";
+    $("update_install").textContent = `Install ${u.latest}`;
+  } else if (u.state === "installing") {
+    say(st, `${u.message} ${u.percent}% — please wait, the panel restarts by itself.`);
+  } else if (u.state === "failed") {
+    say(st, u.message, "err");
+  } else {
+    say(st, u.message || "");
+  }
+}
+
+async function pollUpdate(untilRestart) {
+  clearTimeout(updateTimer);
+  try {
+    const u = await api("/api/update");
+    renderUpdate(u);
+    if (u.state === "checking" || u.state === "installing") updateTimer = setTimeout(() => pollUpdate(untilRestart), 1500);
+  } catch {
+    if (untilRestart) {  // the panel is restarting into the new version
+      say($("update_status"), "The panel is restarting… this page reloads when it's back.");
+      updateTimer = setTimeout(async () => {
+        try { await api("/api/update"); location.reload(); } catch { pollUpdate(true); }
+      }, 4000);
+    }
+  }
+}
+
+$("update_check").onclick = async () => {
+  try { await api("/api/update/check", {}); } catch (e) { say($("update_status"), e.message, "err"); }
+  setTimeout(() => pollUpdate(false), 800);
+};
+
+$("update_install").onclick = async () => {
+  if (!confirm("Install the update now? The panel restarts in about a minute.")) return;
+  try {
+    const r = await api("/api/update/install", {});
+    if (!r.ok) throw new Error(r.error);
+    pollUpdate(true);
+  } catch (e) { say($("update_status"), e.message, "err"); }
+};
+
+// Uploads the file as the raw body; XMLHttpRequest because fetch can't report upload progress.
+$("update_file").onchange = () => {
+  const file = $("update_file").files[0];
+  if (!file) return;
+  const bar = $("update_progress"), st = $("update_status");
+  if (!confirm(`Install ${file.name} (${Math.round(file.size / 1024)} KB) on the panel?`)) { $("update_file").value = ""; return; }
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/update/upload");
+  xhr.setRequestHeader("Content-Type", "application/octet-stream");
+  xhr.setRequestHeader("X-HomePlanner", "1");
+  bar.hidden = false; bar.value = 0;
+  xhr.upload.onprogress = (e) => { if (e.lengthComputable) { bar.value = Math.round(100 * e.loaded / e.total); say(st, `Sending… ${bar.value}%`); } };
+  xhr.onload = () => {
+    let r = {};
+    try { r = JSON.parse(xhr.responseText); } catch { /* not JSON */ }
+    $("update_file").value = "";
+    if (xhr.status === 401) return showLogin();
+    if (!r.ok) { bar.hidden = true; return say(st, r.error || `The panel answered with an error (${xhr.status}).`, "err"); }
+    say(st, r.message, "ok");
+    pollUpdate(true);
+  };
+  xhr.onerror = () => { bar.hidden = true; say(st, "The upload was interrupted. Please try again.", "err"); };
+  xhr.send(file);
+};
+
 // --- Sign in --------------------------------------------------------------------------------------
 
 function showLogin() {
@@ -538,6 +635,7 @@ async function init() {
     if (!$("cal_color").options.length) paletteSelect($("cal_color"), $("cal_swatch"), "");
     renderCalendars();
     renderGoogle();
+    pollUpdate(false);
     if (googleResult && GOOGLE_RESULTS[googleResult]) say($("google_message"), ...GOOGLE_RESULTS[googleResult]);
   }
   if (filled) return;

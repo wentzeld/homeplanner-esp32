@@ -14,6 +14,7 @@
 #include "net.h"
 #include "settings.h"
 #include "ui.h"
+#include "update.h"
 #include "weather.h"
 #include "web.h"
 
@@ -38,6 +39,8 @@ static void restart_into_setup(void) {
 static void settings_saved(void) { esp_restart(); }
 
 static void computer_signed_in(void) { UI(ui_web_signed_in()); }
+
+static void update_changed(void) { UI(ui_update_changed()); }
 
 static void google_changed(void) {
     if (s_main_task) xTaskNotifyGive(s_main_task);
@@ -66,6 +69,7 @@ static void run_setup_mode(void) {
         UI(ui_show_error("Setup couldn't start", "The panel couldn't start its setup hotspot. Restart it and try again."));
         return;
     }
+    update_mark_good();  // the setup page is up: this version works
     UI(ui_show_setup(ssid, pass));
 }
 
@@ -85,6 +89,8 @@ static void supervise(hp_settings_t *s) {
             model_start(s, on_model_change);  // before the screen: it reads the model (cached copy first)
             UI(ui_week_show(s));
             calendar = true;
+            char notice[200];
+            if (update_take_notice(notice, sizeof notice)) UI(ui_notice(notice));  // "Updated to 1.2.0"
         }
         if (!ready && !qr) {
             ESP_LOGI(TAG, "%s", calendar ? "Google sign-in expired" : "setup not finished: showing the QR");
@@ -137,11 +143,17 @@ static void run_mode(hp_settings_t *s) {
     // The settings page for phones/computers (after the clock: sign-ins expire after 90 days).
     char refresh[512], email[128];
     if (settings_load_google(refresh, sizeof refresh, email, sizeof email)) gauth_init(refresh, email);
-    if (web_start_run(&WEB_HOOKS, ip) == ESP_OK) UI(ui_set_web_address(ip));
+    if (web_start_run(&WEB_HOOKS, ip) == ESP_OK) {
+        UI(ui_set_web_address(ip));
+        update_mark_good();  // online with the settings page up: this version works
+    }
+    update_start_checks();
     supervise(s);
 }
 
 void app_main(void) {
+    update_boot();  // first: a just-installed version must prove itself (see update.h)
+    update_set_listener(update_changed);
     ESP_ERROR_CHECK(board_init());
     ui_set_change_settings_cb(restart_into_setup);
     UI(ui_show_status("HomePlanner", "Starting..."));

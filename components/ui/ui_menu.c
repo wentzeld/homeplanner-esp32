@@ -6,6 +6,7 @@
 #include "lvgl.h"
 #include "ui.h"
 #include "ui_internal.h"
+#include "update.h"
 #include "web.h"
 
 #define C_SHADE 0x000000
@@ -216,6 +217,129 @@ static void confirm_sign_out(void) {
     lv_obj_align(go, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
 }
 
+// --- Software update -------------------------------------------------------------------------------------
+
+static struct {
+    lv_obj_t *shade, *status, *install, *check;
+} U;
+static lv_obj_t *s_progress, *s_progress_bar, *s_progress_label;
+
+static void close_update_card(void) {
+    if (U.shade) lv_obj_delete(U.shade);
+    memset(&U, 0, sizeof U);
+}
+
+static void on_update_close(lv_event_t *e) {
+    (void)e;
+    close_update_card();
+}
+
+static void refresh_update_card(void) {
+    if (!U.shade) return;
+    update_status_t st = update_status();
+    char text[900];
+    switch (st.state) {
+        case UPDATE_AVAILABLE:
+            snprintf(text, sizeof text, "Version %s is available.\n\n%.600s", st.latest, st.notes);
+            break;
+        case UPDATE_CHECKING: snprintf(text, sizeof text, "Checking for updates..."); break;
+        case UPDATE_UP_TO_DATE:
+        case UPDATE_FAILED: snprintf(text, sizeof text, "%s", st.message); break;
+        default: snprintf(text, sizeof text, "Tap Check now to look for a new version."); break;
+    }
+    lv_label_set_text(U.status, text);
+    if (st.state == UPDATE_AVAILABLE) lv_obj_remove_flag(U.install, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(U.install, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_update_check(lv_event_t *e) {
+    (void)e;
+    update_check_now();
+}
+
+static void on_update_install_confirmed(lv_event_t *e) {
+    close_modal(e);
+    char err[160];
+    if (update_install_available(err, sizeof err) != ESP_OK) ui_toast(err);
+}
+
+static void on_update_install(lv_event_t *e) {
+    (void)e;
+    update_status_t st = update_status();
+    close_update_card();
+    lv_obj_t *card;
+    modal(640, 280, &card, true);
+    char t[64];
+    snprintf(t, sizeof t, "Install version %s?", st.latest);
+    lv_obj_t *tl = label(card, t, &lv_font_montserrat_32, C_FG);
+    lv_obj_align(tl, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_t *d = label(card, "The panel downloads it and restarts (about a minute).\nIf it doesn't work, it goes back to this version by itself.",
+                        &lv_font_montserrat_18, C_MUTED);
+    lv_obj_align(d, LV_ALIGN_TOP_LEFT, 0, 56);
+    lv_obj_t *cancel = button(card, "Cancel", C_CARD, C_FG, close_modal);
+    lv_obj_align(cancel, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_obj_t *go = button(card, "Install", C_ACCENT, 0x0b1220, on_update_install_confirmed);
+    lv_obj_align(go, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+}
+
+static void open_update_card(void) {
+    close_update_card();
+    lv_obj_t *card;
+    U.shade = modal(720, 460, &card, true);
+    char t[64];
+    snprintf(t, sizeof t, "Software update  -  version %s", update_current_version());
+    lv_obj_t *tl = label(card, t, &lv_font_montserrat_32, C_FG);
+    lv_obj_align(tl, LV_ALIGN_TOP_LEFT, 0, 0);
+    U.status = label(card, "", &lv_font_montserrat_18, C_FG);
+    lv_obj_set_width(U.status, 660);
+    lv_label_set_long_mode(U.status, LV_LABEL_LONG_WRAP);
+    lv_obj_align(U.status, LV_ALIGN_TOP_LEFT, 0, 60);
+    U.check = button(card, "Check now", C_CARD, C_FG, on_update_check);
+    lv_obj_align(U.check, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    U.install = button(card, "Install", C_ACCENT, 0x0b1220, on_update_install);
+    lv_obj_align(U.install, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_t *close = button(card, "Close", C_CARD, C_FG, on_update_close);
+    lv_obj_align(close, LV_ALIGN_BOTTOM_RIGHT, 0, 0);
+    refresh_update_card();
+}
+
+// Called (LVGL lock held) whenever the update status changes: the progress screen for any install.
+void ui_update_changed(void) {
+    update_status_t st = update_status();
+    if (st.state == UPDATE_INSTALLING) {
+        if (!s_progress) {
+            close_update_card();
+            lv_obj_t *card;
+            s_progress = modal(640, 240, &card, false);
+            lv_obj_set_style_bg_opa(s_progress, LV_OPA_COVER, 0);
+            lv_obj_t *t = label(card, "Updating HomePlanner", &lv_font_montserrat_32, C_FG);
+            lv_obj_align(t, LV_ALIGN_TOP_LEFT, 0, 0);
+            s_progress_label = label(card, "", &lv_font_montserrat_18, C_MUTED);
+            lv_obj_align(s_progress_label, LV_ALIGN_TOP_LEFT, 0, 60);
+            s_progress_bar = lv_bar_create(card);
+            lv_obj_set_size(s_progress_bar, 580, 24);
+            lv_obj_align(s_progress_bar, LV_ALIGN_BOTTOM_MID, 0, -20);
+            lv_obj_set_style_bg_color(s_progress_bar, lv_color_hex(C_ACCENT), LV_PART_INDICATOR);
+        }
+        char text[200];
+        snprintf(text, sizeof text, "%s  %d%%\nPlease don't unplug the panel.", st.message, st.percent);
+        lv_label_set_text(s_progress_label, text);
+        lv_bar_set_value(s_progress_bar, st.percent, LV_ANIM_OFF);
+        return;
+    }
+    if (s_progress) {  // failed or done without a restart
+        lv_obj_delete(s_progress);
+        s_progress = NULL;
+        if (st.state == UPDATE_FAILED) ui_toast(st.message);
+    }
+    refresh_update_card();
+}
+
+static void on_software_update(lv_event_t *e) {
+    close_modal(e);
+    open_update_card();
+}
+
 // --- The menu ----------------------------------------------------------------------------------------
 
 static void on_manage(lv_event_t *e) {
@@ -247,7 +371,9 @@ void ui_open_settings_menu(lv_event_t *e) {
     modal(560, LV_SIZE_CONTENT, &card, true);
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(card, 12, 0);
-    label(card, "Settings", &lv_font_montserrat_32, C_FG);
+    char title[48];
+    snprintf(title, sizeof title, "Settings  (version %s)", update_current_version());
+    label(card, title, &lv_font_montserrat_32, C_FG);
     const struct {
         const char *text;
         lv_event_cb_t cb;
@@ -255,10 +381,12 @@ void ui_open_settings_menu(lv_event_t *e) {
         {LV_SYMBOL_EDIT "  Manage from phone or computer", on_manage},
         {LV_SYMBOL_WIFI "  Change settings (hotspot)", on_change_settings},
         {LV_SYMBOL_CLOSE "  Sign out all computers", on_sign_out},
+        {LV_SYMBOL_DOWNLOAD "  Software update", on_software_update},
         {"Close", close_modal},
     };
+    const size_t last = sizeof items / sizeof items[0] - 1;
     for (size_t i = 0; i < sizeof items / sizeof items[0]; i++) {
-        lv_obj_t *b = button(card, items[i].text, i == 3 ? C_ACCENT : C_CARD, i == 3 ? 0x0b1220 : C_FG, items[i].cb);
+        lv_obj_t *b = button(card, items[i].text, i == last ? C_ACCENT : C_CARD, i == last ? 0x0b1220 : C_FG, items[i].cb);
         lv_obj_set_width(b, LV_PCT(100));
         lv_obj_set_style_text_align(lv_obj_get_child(b, 0), LV_TEXT_ALIGN_LEFT, 0);
         lv_obj_align(lv_obj_get_child(b, 0), LV_ALIGN_LEFT_MID, 0, 0);

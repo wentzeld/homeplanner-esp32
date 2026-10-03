@@ -21,6 +21,8 @@ This is the standalone firmware version of [HomePlanner for the Raspberry Pi](ht
 - **Screen sleep** at night on a schedule; a touch wakes it for a few minutes.
 - **Works offline** with the last synced events, and recovers by itself after power cuts and Wi-Fi drops.
 - **Settings from your phone or computer** at `http://homeplanner.local`, unlocked with a code from the panel.
+- **Updates over Wi-Fi:** new versions from GitHub install with one tap; a version that doesn't work is undone
+  automatically. Only firmware signed with the project's key is accepted.
 
 ## What you need
 
@@ -52,6 +54,8 @@ The panel restarts and shows your week. Done.
     signed in for 90 days.
   - **Change settings (hotspot)** starts the setup Wi-Fi again (to change the home Wi-Fi network).
   - **Sign out all computers** forgets every phone and computer that was signed in.
+  - **Software update** shows the version and whether a newer one is available; **Install** downloads it and
+    restarts. The panel checks once a day; the settings page has the same button.
 - **Other calendars:** on the settings page, tick any of your Google calendars, or paste an iCal link
   (for a Google calendar that isn't yours: its *Secret address in iCal format*). They refresh every 30 minutes.
 - **Disconnect Google** on the settings page removes the panel's access (it also asks Google to withdraw it).
@@ -69,13 +73,38 @@ The panel restarts and shows your week. Done.
    Privacy & Security*. The port appears as `/dev/cu.wchusbserial*`.
 3. **Google sign-in client:** copy `secrets.defaults.example` to `secrets.defaults` and fill in the client ID and
    secret (see the next section). Without it, everything works except *Sign in with Google*.
-4. **Build and flash:**
+4. **Signing key** (once): only firmware signed with this key can be installed over the air.
+   ```bash
+   espsecure.py generate_signing_key --version 2 --scheme rsa3072 signing_key.pem
+   ```
+   It's git-ignored. **Back it up** (a password manager's secure note, or an encrypted disk image): without it,
+   your panels only accept new firmware by USB again. Builds without the key aren't signed, and panels running
+   signed firmware refuse them.
+5. **Build and flash** by USB the first time:
    ```bash
    idf.py build
-   idf.py -p /dev/cu.wchusbserial10 -b 460800 flash   # first time; later `app-flash` is enough
+   idf.py -p /dev/cu.wchusbserial10 -b 460800 flash   # bootloader, partition table and firmware
    idf.py -p /dev/cu.wchusbserial10 monitor           # logs (Ctrl-] to quit)
    ```
-   After changing `secrets.defaults`, delete `sdkconfig` once so the new values are picked up.
+   After changing `secrets.defaults` or adding the key, delete `sdkconfig` once so the new settings are picked up.
+6. **After that, over Wi-Fi:** `idf.py build && tools/ota.sh` (asks once for the panel's code; or use *Install a
+   firmware file* on the settings page). The panel shows the progress and restarts into the new version.
+
+**Updating a panel from before over-the-air updates** (versions before 1.1.0): flash it once more by USB with
+`idf.py … flash` as above. The flash is divided differently now (two firmware slots); settings, Wi-Fi and the Google
+sign-in are kept, the calendar cache is rebuilt.
+
+### Releasing a new version
+
+1. Raise the version in `version.txt` (e.g. `1.2.0`) and commit.
+2. `. ~/esp/esp-idf/export.sh && tools/release.sh "What's new in this version"`
+
+The script builds the signed firmware, tags `v1.2.0`, pushes the tag and publishes a GitHub release with
+`homeplanner.bin`. Panels see it within a day (or at once with *Check now*). A new version has 5 minutes after
+its first start to get online; otherwise the panel goes back to the previous version and says so.
+
+Release files contain the Google client ID and secret from `secrets.defaults`, like any installed app; that alone
+gives no access to anyone's calendar.
 
 **Wi-Fi chip:** the panel's ESP32-C6 must run the *ESP-Hosted* slave firmware **2.12.x** (version 1.2 panels ship
 with it). This firmware uses esp_hosted 2.12.3 over SDIO; other versions don't talk to each other.
@@ -126,6 +155,7 @@ Keep `secrets.defaults` out of git anyway (it's in `.gitignore`).
 - `components/web` — the settings page: setup hotspot (captive portal) and the home-network page with one-time
   codes and session cookies. `docs/` — the sign-in relay page, home page and privacy policy (GitHub Pages).
 - `components/model` — background sync and the flash cache (LittleFS); `components/ui` — the LVGL screens.
+- `components/update` — over-the-air updates (GitHub releases, uploads, rollback); `tools/ota.sh`, `tools/release.sh`.
 
 ## Tests
 
@@ -153,6 +183,8 @@ Raspberry Pi version (`recurring_ical_events`; needs that repo with its `.venv` 
   settings, or after 7 days if the app is still in *Testing* mode). Scan the QR code and sign in again.
 - **An iCal link fails with HTTP 401/403/404:** use the calendar's *secret*/private iCal address, not a web page
   link. For Google calendars, use *Settings and sharing → Secret address in iCal format*.
+- **An update is refused with "isn't signed with this panel's key":** build with the same `signing_key.pem` that
+  signed the firmware on the panel (check that `signing_key.pem` is in the project folder and delete `sdkconfig` once).
 - **Logs:** `idf.py -p /dev/cu.wchusbserial10 monitor`.
 
 ## Security and privacy
@@ -163,7 +195,10 @@ Raspberry Pi version (`recurring_ical_events`; needs that repo with its `.venv` 
 - The settings page on the home network is plain `http`. It needs a code shown on the panel to sign in (6 digits,
   10 minutes, 5 tries); signed-in devices get a random 90-day session (only a hash is stored). It refuses requests
   from other web sites and from other host names.
-- There is no HomePlanner server: the panel talks directly to Google, Open-Meteo and your iCal links.
+- Updates only install when signed with the project's key (RSA-3072, checked by the panel before it switches); this
+  doesn't use hardware secure boot, so someone with the panel and a USB cable can still flash anything.
+- There is no HomePlanner server: the panel talks directly to Google, Open-Meteo, your iCal links and GitHub
+  (to check for updates).
   See the [privacy policy](https://wentzeld.github.io/homeplanner-esp32/privacy.html).
 
 ## License

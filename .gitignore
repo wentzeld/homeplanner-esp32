@@ -7,3 +7,5 @@ dependencies.lock
 tests/host/fixtures/
 # The Google sign-in client (ID and secret) for your builds: never commit it.
 secrets.defaults
+# The firmware signing key: keep a backup somewhere safe, never commit it.
+signing_key.pem

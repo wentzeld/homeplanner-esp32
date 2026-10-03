@@ -6,6 +6,10 @@ set(SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.defaults")
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/secrets.defaults")
   list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/secrets.defaults")
 endif()
+# Signed firmware (over-the-air updates only accept firmware signed with the same key).
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/signing_key.pem")
+  list(APPEND SDKCONFIG_DEFAULTS "${CMAKE_CURRENT_LIST_DIR}/sdkconfig.signing")
+endif()
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(homeplanner)

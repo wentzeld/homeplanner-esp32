@@ -23,6 +23,7 @@
 #include "oauth.h"
 #include "sdkconfig.h"
 #include "tz.h"
+#include "update.h"
 #include "web_auth.h"
 
 static const char *TAG = "web";
@@ -683,6 +684,82 @@ static esp_err_t calendar_update_post(httpd_req_t *req) {
     return send_ok(req);
 }
 
+// --- Software update -----------------------------------------------------------------------------
+
+static const char *STATE_NAMES[] = {"idle", "checking", "up_to_date", "available", "installing", "failed"};
+
+static esp_err_t update_get(httpd_req_t *req) {
+    GUARD(req, true);
+    update_status_t st = update_status();
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddStringToObject(o, "current", st.current);
+    cJSON_AddStringToObject(o, "state", STATE_NAMES[st.state]);
+    cJSON_AddNumberToObject(o, "percent", st.percent);
+    cJSON_AddStringToObject(o, "message", st.message);
+    if (st.state == UPDATE_AVAILABLE) {
+        cJSON_AddStringToObject(o, "latest", st.latest);
+        cJSON_AddStringToObject(o, "notes", st.notes);
+    }
+    if (st.checked) cJSON_AddNumberToObject(o, "checked", (double)st.checked);
+    return send_json(req, o);
+}
+
+static esp_err_t update_check_post(httpd_req_t *req) {
+    GUARD(req, true);
+    update_check_now();
+    return send_ok(req);
+}
+
+static esp_err_t update_install_post(httpd_req_t *req) {
+    GUARD(req, true);
+    char err[160];
+    if (update_install_available(err, sizeof err) != ESP_OK) return send_error(req, err);
+    return send_ok(req);
+}
+
+// The firmware file as the raw request body (application/octet-stream), written to flash as it arrives.
+static esp_err_t update_upload_post(httpd_req_t *req) {
+    GUARD(req, true);
+    char err[160];
+    if (req->content_len <= 0) return send_error(req, "Choose a firmware file (homeplanner.bin).");
+    if (update_upload_begin(req->content_len, err, sizeof err) != ESP_OK) return send_error(req, err);
+    char *buf = malloc(4096);
+    esp_err_t e = buf ? ESP_OK : ESP_ERR_NO_MEM;
+    if (!buf) snprintf(err, sizeof err, "The panel is out of memory.");
+    size_t got = 0;
+    while (e == ESP_OK && got < req->content_len) {
+        size_t want = req->content_len - got;
+        // The first piece must hold the firmware's description (checked in update_upload_write).
+        int r = httpd_req_recv(req, buf, want < 4096 ? want : 4096);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT) continue;
+        if (r <= 0) {
+            e = ESP_FAIL;
+            snprintf(err, sizeof err, "The upload was interrupted. Please try again.");
+            break;
+        }
+        if (got == 0) {  // fill the first piece completely before checking it
+            while (r < 4096 && (size_t)r < want) {
+                int more = httpd_req_recv(req, buf + r, (want < 4096 ? want : 4096) - r);
+                if (more == HTTPD_SOCK_ERR_TIMEOUT) continue;
+                if (more <= 0) break;
+                r += more;
+            }
+        }
+        e = update_upload_write(buf, (size_t)r, err, sizeof err);
+        got += (size_t)r;
+    }
+    free(buf);
+    if (e != ESP_OK) {
+        update_upload_end(false, NULL, 0);
+        return send_error(req, err);
+    }
+    if (update_upload_end(true, err, sizeof err) != ESP_OK) return send_error(req, err);
+    cJSON *o = cJSON_CreateObject();
+    cJSON_AddBoolToObject(o, "ok", true);
+    cJSON_AddStringToObject(o, "message", "Installed. The panel is restarting into the new version.");
+    return send_json(req, o);
+}
+
 // --- Start ---------------------------------------------------------------------------------------
 
 static esp_err_t start(bool run_mode, const web_hooks_t *hooks) {
@@ -691,7 +768,7 @@ static esp_err_t start(bool run_mode, const web_hooks_t *hooks) {
     if (!s_lock) s_lock = xSemaphoreCreateMutex();
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.stack_size = 16 * 1024;  // HTTPS downloads and iCal parsing run here
-    cfg.max_uri_handlers = 16;
+    cfg.max_uri_handlers = 20;
     cfg.lru_purge_enable = true;
     cfg.recv_wait_timeout = 15;
     cfg.send_wait_timeout = 15;
@@ -712,6 +789,10 @@ static esp_err_t start(bool run_mode, const web_hooks_t *hooks) {
         {.uri = "/api/google/calendars", .method = HTTP_GET, .handler = google_calendars_get},
         {.uri = "/api/google/disconnect", .method = HTTP_POST, .handler = google_disconnect_post},
         {.uri = "/oauth/done", .method = HTTP_GET, .handler = oauth_done_get},
+        {.uri = "/api/update", .method = HTTP_GET, .handler = update_get},
+        {.uri = "/api/update/check", .method = HTTP_POST, .handler = update_check_post},
+        {.uri = "/api/update/install", .method = HTTP_POST, .handler = update_install_post},
+        {.uri = "/api/update/upload", .method = HTTP_POST, .handler = update_upload_post},
     };
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; i++) httpd_register_uri_handler(server, &routes[i]);
     if (!run_mode) httpd_register_err_handler(server, HTTPD_404_NOT_FOUND, redirect_404);

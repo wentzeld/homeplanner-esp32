@@ -1,0 +1,7 @@
+# Only firmware signed with signing_key.pem is installed over the air (no hardware secure boot, no
+# eFuses). Used automatically when signing_key.pem exists (see CMakeLists.txt and README).
+CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT=y
+CONFIG_SECURE_SIGNED_APPS_RSA_SCHEME=y
+CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT=y
+CONFIG_SECURE_BOOT_BUILD_SIGNED_BINARIES=y
+CONFIG_SECURE_BOOT_SIGNING_KEY="signing_key.pem"

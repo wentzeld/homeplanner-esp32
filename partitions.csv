@@ -1,5 +1,8 @@
-# Name,    Type, SubType, Offset,  Size
-nvs,       data, nvs,     ,        0x10000
-phy_init,  data, phy,     ,        0x1000
-factory,   app,  factory, ,        4M
-storage,   data, littlefs,,        8M
+# Name,    Type, SubType,  Offset,   Size
+# nvs stays at 0x9000 so settings, Wi-Fi and the Google sign-in survive the switch to two app slots.
+nvs,       data, nvs,      0x9000,   0x10000
+otadata,   data, ota,      0x19000,  0x2000
+phy_init,  data, phy,      0x1b000,  0x1000
+ota_0,     app,  ota_0,    0x20000,  4M
+ota_1,     app,  ota_1,    0x420000, 4M
+storage,   data, littlefs, 0x820000, 0x7e0000

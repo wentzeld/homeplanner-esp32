@@ -1,0 +1,14 @@
+menu "HomePlanner: software updates"
+
+    config HP_UPDATE_REPO
+        string "GitHub repository with the releases (owner/name)"
+        default "wentzeld/homeplanner-esp32"
+
+    config HP_OTA_TEST_NEVER_GOOD
+        bool "Test build: never confirm itself (to test automatic rollback)"
+        default n
+        help
+            Only for testing: this firmware never marks itself as working, so 5 minutes after an
+            update the panel goes back to the previous version. Never release a build with this on.
+
+endmenu
