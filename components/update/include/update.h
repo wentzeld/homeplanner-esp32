@@ -34,6 +34,8 @@ typedef void (*update_listener_t)(void);  // called from update tasks on any cha
 void update_boot(void);  // first thing at start-up (rollback timer, notices)
 void update_mark_good(void);  // this version works (online): keep it
 void update_set_listener(update_listener_t listener);
+// Called with false before an update writes flash (the screen would flicker) and with true if it fails.
+void update_set_screen_hook(void (*screen)(bool on));
 const char *update_current_version(void);
 update_status_t update_status(void);
 

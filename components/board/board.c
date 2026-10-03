@@ -66,13 +66,26 @@ static esp_err_t backlight_init(void) {
     return ledc_channel_config(&channel);
 }
 
-esp_err_t board_set_backlight(int percent) {
-    if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
+static volatile bool s_backlight_held;  // off while an update writes flash
+static int s_backlight_wanted = 0;      // what the app asked for (restored after the hold)
+
+static esp_err_t apply_backlight(int percent) {
     // Same mapping as Elecrow's example: a floor so low values still light the panel.
     uint32_t duty = percent == 0 ? 0 : (uint32_t)(percent * 18 + 200);
     ESP_RETURN_ON_ERROR(ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty), TAG, "duty");
     return ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+void board_backlight_hold(bool off) {
+    s_backlight_held = off;
+    apply_backlight(off ? 0 : s_backlight_wanted);
+}
+
+esp_err_t board_set_backlight(int percent) {
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    s_backlight_wanted = percent;
+    return s_backlight_held ? ESP_OK : apply_backlight(percent);
 }
 
 static esp_err_t panel_init(void) {
@@ -91,7 +104,7 @@ static esp_err_t panel_init(void) {
         .dpi_clock_freq_mhz = DPI_CLOCK_MHZ,
         .virtual_channel = 0,
         .pixel_format = LCD_COLOR_PIXEL_FORMAT_RGB565,
-        .num_fbs = 1,
+        .num_fbs = 2,  // LVGL draws into the hidden one and swaps at vsync (see lvgl_init)
         .video_timing = {
             .h_size = BOARD_LCD_H_RES,
             .v_size = BOARD_LCD_V_RES,
@@ -102,7 +115,6 @@ static esp_err_t panel_init(void) {
             .vsync_pulse_width = 10,
             .vsync_front_porch = 12,
         },
-        .flags.use_dma2d = true,
     };
     ek79007_vendor_config_t vendor = {.mipi_config = {.dsi_bus = s_dsi_bus, .dpi_config = &dpi}};
     const esp_lcd_panel_dev_config_t dev = {
@@ -130,13 +142,15 @@ static esp_err_t lvgl_init(void) {
         .panel_handle = s_panel,
         .control_handle = s_panel,
         .buffer_size = BOARD_LCD_H_RES * BOARD_LCD_V_RES,
-        .double_buffer = true,
+        .double_buffer = true,  // the panel's own two framebuffers (avoid_tearing below)
         .hres = BOARD_LCD_H_RES,
         .vres = BOARD_LCD_V_RES,
         .color_format = LV_COLOR_FORMAT_RGB565,
-        .flags = {.buff_spiram = true, .sw_rotate = false, .swap_bytes = false},
+        .flags = {.buff_spiram = true, .sw_rotate = false, .swap_bytes = false, .direct_mode = true},
     };
-    const lvgl_port_display_dsi_cfg_t dsi = {.flags = {.avoid_tearing = false}};
+    // Drawing straight into the panel's framebuffers avoids copying a whole screen through PSRAM on every
+    // redraw. That copy starved the display of data on full redraws, which showed as blue flashes.
+    const lvgl_port_display_dsi_cfg_t dsi = {.flags = {.avoid_tearing = true}};
     s_disp = lvgl_port_add_disp_dsi(&disp, &dsi);
     return s_disp ? ESP_OK : ESP_FAIL;
 }

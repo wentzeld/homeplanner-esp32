@@ -31,6 +31,7 @@ static SemaphoreHandle_t s_lock;
 static update_status_t s_status;
 static update_release_t s_release;
 static update_listener_t s_listener;
+static void (*s_screen)(bool on);
 static esp_timer_handle_t s_confirm_timer;
 static TaskHandle_t s_check_task;
 static bool s_busy;  // an install or upload is running
@@ -59,6 +60,23 @@ static void set_state(update_state_t state, int percent, const char *message) {
 }
 
 void update_set_listener(update_listener_t listener) { s_listener = listener; }
+void update_set_screen_hook(void (*screen)(bool on)) { s_screen = screen; }
+
+#define SCREEN_OFF_MESSAGE "The screen turns off while the update is written (about a minute). It comes back on by itself."
+
+// Writing to flash briefly blocks the memory the picture is in, which makes the screen flicker.
+// Say so, give a moment to read it, then turn the screen off until the restart.
+static void screen_off_for_writing(void) {
+    set_state(UPDATE_INSTALLING, 0, SCREEN_OFF_MESSAGE);
+    vTaskDelay(pdMS_TO_TICKS(3000));
+#if !CONFIG_HP_UPDATE_TEST_SCREEN_ON
+    if (s_screen) s_screen(false);
+#endif
+}
+
+static void screen_back_on(void) {
+    if (s_screen) s_screen(true);
+}
 const char *update_current_version(void) { return esp_app_get_description()->version; }
 
 update_status_t update_status(void) {
@@ -234,6 +252,7 @@ static void install_task(void *arg) {
     };
     esp_https_ota_config_t cfg = {.http_config = &http};
     esp_https_ota_handle_t ota = NULL;
+    screen_off_for_writing();  // begin erases the other firmware slot
     esp_err_t e = esp_https_ota_begin(&cfg, &ota);
     if (e == ESP_OK) {
         esp_app_desc_t desc;
@@ -273,6 +292,7 @@ static void install_task(void *arg) {
         if (!msg[0]) snprintf(msg, sizeof msg, "%s", explain(e) ? explain(e) : "The update didn't install. Please try again.");
         ESP_LOGW(TAG, "update failed: %s (%s)", msg, esp_err_to_name(e));
         s_busy = false;
+        screen_back_on();
         set_state(UPDATE_FAILED, 0, msg);
     }
     free(r);
@@ -317,14 +337,17 @@ esp_err_t update_upload_begin(size_t size, char *err, size_t err_size) {
         snprintf(err, err_size, s_upload_part ? "The firmware is too large." : "This panel can't update over the air yet (flash it by USB once).");
         return ESP_ERR_INVALID_SIZE;
     }
+    screen_off_for_writing();  // begin erases the other firmware slot
     esp_err_t e = esp_ota_begin(s_upload_part, size, &s_upload);
     if (e != ESP_OK) {
         s_busy = false;
+        screen_back_on();
         snprintf(err, err_size, "Couldn't start the update (%s).", esp_err_to_name(e));
+        set_state(UPDATE_FAILED, 0, err);
         return e;
     }
     s_upload_len = 0;
-    set_state(UPDATE_INSTALLING, 0, "Receiving the update...");
+    set_state(UPDATE_INSTALLING, 0, "Receiving the update... (the screen is off on purpose)");
     return ESP_OK;
 }
 
@@ -356,6 +379,7 @@ esp_err_t update_upload_end(bool complete, char *err, size_t err_size) {
     if (complete && e == ESP_OK) e = esp_ota_set_boot_partition(s_upload_part);
     if (e != ESP_OK) {
         s_busy = false;
+        screen_back_on();
         if (complete) snprintf(err, err_size, "%s", explain(e) ? explain(e) : "The update didn't install.");
         set_state(UPDATE_FAILED, 0, complete ? err : "The upload was interrupted.");
         return e;

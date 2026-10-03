@@ -26,6 +26,7 @@ static const char *TAG = "model";
 #define DAYS_AHEAD 35
 #define EVENTS_FILE "/storage/events.json"
 #define WEATHER_FILE "/storage/weather.bin"
+#define WEATHER_SAVE_EVERY_S (6 * 60 * 60)
 
 static hp_settings_t s_settings;
 static SemaphoreHandle_t s_lock;
@@ -56,6 +57,7 @@ static int s_ext_count;
 static unsigned s_ext_version;
 static TaskHandle_t s_ext_task;
 static weather_report_t s_weather;
+static time_t s_weather_saved;
 static model_status_t s_status;
 static hp_date_t s_window_start, s_window_end;  // [start, end) covered by s_events
 static volatile bool s_extra_active;  // a week outside the window is on screen: keep it loaded too
@@ -164,14 +166,85 @@ static void replace_events(const cJSON *items, hp_date_t from, hp_date_t to, boo
     rebuild_all();
 }
 
+// --- flash cache writes ------------------------------------------------------------------------------
+// Each write to flash briefly pauses memory access; only write a cache file when its content changed
+// (fingerprints of what's on flash are kept in RAM, noted when the files are read at start-up).
+
+typedef struct {
+    char path[40];
+    uint32_t hash;
+} cache_note_t;
+
+static cache_note_t s_cache_notes[2 * HP_MAX_CALENDARS + 4];
+static SemaphoreHandle_t s_cache_lock;  // the sync, calendar, weather and web tasks all write caches
+
+static void cache_lock(bool take) {
+    static StaticSemaphore_t storage;
+    if (!s_cache_lock) s_cache_lock = xSemaphoreCreateMutexStatic(&storage);
+    if (take) xSemaphoreTake(s_cache_lock, portMAX_DELAY);
+    else xSemaphoreGive(s_cache_lock);
+}
+
+static uint32_t fnv1a(const void *data, size_t len) {
+    const uint8_t *p = data;
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < len; i++) h = (h ^ p[i]) * 16777619u;
+    return h;
+}
+
+static cache_note_t *cache_note_for(const char *path) {
+    cache_note_t *free_slot = NULL;
+    for (size_t i = 0; i < sizeof s_cache_notes / sizeof s_cache_notes[0]; i++) {
+        if (strcmp(s_cache_notes[i].path, path) == 0) return &s_cache_notes[i];
+        if (!free_slot && !s_cache_notes[i].path[0]) free_slot = &s_cache_notes[i];
+    }
+    if (free_slot) snprintf(free_slot->path, sizeof free_slot->path, "%s", path);
+    return free_slot;
+}
+
+// What's on flash now (read at start-up).
+static void cache_noted(const char *path, const void *data, size_t len) {
+    uint32_t h = fnv1a(data, len);
+    cache_lock(true);
+    cache_note_t *n = cache_note_for(path);
+    if (n) n->hash = h;
+    cache_lock(false);
+}
+
+static void cache_forget(const char *path) {
+    cache_lock(true);
+    cache_note_t *n = cache_note_for(path);
+    if (n) memset(n, 0, sizeof *n);
+    cache_lock(false);
+}
+
+// Write path (via a temporary file) unless it already holds exactly this.
+static void cache_write(const char *path, const void *data, size_t len) {
+    uint32_t h = fnv1a(data, len);
+    cache_lock(true);
+    cache_note_t *n = cache_note_for(path);
+    if (n && n->hash == h) {
+        cache_lock(false);
+        return;
+    }
+    char tmp[48];
+    snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *f = fopen(tmp, "wb");
+    bool ok = f && fwrite(data, 1, len, f) == len;
+    if (f) fclose(f);
+    if (ok && rename(tmp, path) == 0) {
+        if (n) n->hash = h;
+        ESP_LOGI(TAG, "saved %s (%u bytes)", path, (unsigned)len);
+    } else {
+        remove(tmp);
+        ESP_LOGW(TAG, "couldn't save %s", path);
+    }
+    cache_lock(false);
+}
+
 static void save_events_cache(const cJSON *items) {
     char *text = cJSON_PrintUnformatted(items);
-    FILE *f = text ? fopen(EVENTS_FILE ".tmp", "w") : NULL;
-    if (f) {
-        fputs(text, f);
-        fclose(f);
-        rename(EVENTS_FILE ".tmp", EVENTS_FILE);
-    }
+    if (text) cache_write(EVENTS_FILE, text, strlen(text));
     free(text);
 }
 
@@ -184,6 +257,7 @@ static void load_cache(void) {
         char *text = heap_caps_malloc(size + 1, MALLOC_CAP_SPIRAM);
         if (text && fread(text, 1, size, f) == (size_t)size) {
             text[size] = '\0';
+            cache_noted(EVENTS_FILE, text, (size_t)size);
             cJSON *items = cJSON_Parse(text);
             if (cJSON_IsArray(items)) {
                 replace_events(items, (hp_date_t){1970, 1, 1}, (hp_date_t){1970, 1, 1}, false);
@@ -197,6 +271,7 @@ static void load_cache(void) {
     f = fopen(WEATHER_FILE, "rb");
     if (f) {
         if (fread(&s_weather, sizeof s_weather, 1, f) != 1) memset(&s_weather, 0, sizeof s_weather);
+        else s_weather_saved = time(NULL);  // fresh enough; the next save is due in 6 hours
         fclose(f);
     }
 }
@@ -251,10 +326,10 @@ static void weather_task(void *arg) {
                 model_lock();
                 s_weather = r;
                 model_unlock();
-                FILE *f = fopen(WEATHER_FILE, "wb");
-                if (f) {
-                    fwrite(&r, sizeof r, 1, f);
-                    fclose(f);
+                // Only for showing something after an offline restart: every 6 hours is plenty.
+                if (time(NULL) - s_weather_saved >= WEATHER_SAVE_EVERY_S) {
+                    cache_write(WEATHER_FILE, &r, sizeof r);
+                    s_weather_saved = time(NULL);
                 }
                 notify();
             }
@@ -285,17 +360,9 @@ void model_refresh_now(void) {
 static void ics_path(const char *id, char *out, size_t size) { snprintf(out, size, "/storage/ext_%s.ics", id); }
 
 static void save_ics(const char *id, const char *ics, size_t len) {
-    char path[48], tmp[52];
+    char path[48];
     ics_path(id, path, sizeof path);
-    snprintf(tmp, sizeof tmp, "%s.tmp", path);
-    FILE *f = fopen(tmp, "wb");
-    bool ok = f && fwrite(ics, 1, len, f) == len;
-    if (f) fclose(f);
-    if (ok) rename(tmp, path);
-    else {
-        remove(tmp);
-        ESP_LOGW(TAG, "couldn't keep a copy of calendar %s on flash", id);
-    }
+    cache_write(path, ics, len);
 }
 
 static char *load_ics(const char *id, size_t *len) {
@@ -310,6 +377,7 @@ static char *load_ics(const char *id, size_t *len) {
     if (text && fread(text, 1, (size_t)size, f) == (size_t)size) {
         text[size] = '\0';
         *len = (size_t)size;
+        cache_noted(path, text, (size_t)size);
     } else {
         free(text);
         text = NULL;
@@ -393,11 +461,7 @@ static void fetch_google(const hp_calendar_t *cal) {
         char path[48];
         snprintf(path, sizeof path, "/storage/gcal_%s.json", cal->id);
         char *text = cJSON_PrintUnformatted(items);
-        FILE *f = text ? fopen(path, "w") : NULL;
-        if (f) {
-            fputs(text, f);
-            fclose(f);
-        }
+        if (text) cache_write(path, text, strlen(text));
         free(text);
         ESP_LOGI(TAG, "Google calendar \"%s\" updated (%d events)", cal->name, cJSON_GetArraySize(items));
     } else {
@@ -420,6 +484,7 @@ static void load_google_cache(const hp_calendar_t *cal) {
     char *text = size > 0 ? heap_caps_malloc((size_t)size + 1, MALLOC_CAP_SPIRAM) : NULL;
     if (text && fread(text, 1, (size_t)size, f) == (size_t)size) {
         text[size] = '\0';
+        cache_noted(path, text, (size_t)size);
         cJSON *items = cJSON_Parse(text);
         if (cJSON_IsArray(items)) install_google(cal->id, items, false);
         cJSON_Delete(items);
@@ -469,8 +534,10 @@ static void reload_list(void) {
         char path[48];
         ics_path(old[j].cfg.id, path, sizeof path);
         remove(path);  // removed calendar: drop its copy
+        cache_forget(path);
         snprintf(path, sizeof path, "/storage/gcal_%s.json", old[j].cfg.id);
         remove(path);
+        cache_forget(path);
         ical_free(old[j].parsed);
         free(old[j].gevents);
     }

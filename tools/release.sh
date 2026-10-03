@@ -39,6 +39,7 @@ idf.py build
 espsecure.py verify_signature --version 2 --keyfile signing_key.pem build/homeplanner.bin | grep -q "verification successful" \
   || die "build/homeplanner.bin isn't signed with signing_key.pem"
 grep -q "CONFIG_HP_OTA_TEST_NEVER_GOOD=y" sdkconfig && die "this is a rollback-test build; don't release it"
+grep -q "CONFIG_HP_UPDATE_TEST_SCREEN_ON=y" sdkconfig && die "this test build keeps the screen on during updates; don't release it"
 
 if [ -z "$RESUME" ]; then
   git tag -s "v$VERSION" -m "HomePlanner $VERSION"

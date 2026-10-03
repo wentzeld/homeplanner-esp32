@@ -11,4 +11,11 @@ menu "HomePlanner: software updates"
             Only for testing: this firmware never marks itself as working, so 5 minutes after an
             update the panel goes back to the previous version. Never release a build with this on.
 
+    config HP_UPDATE_TEST_SCREEN_ON
+        bool "Test build: keep the screen on while an update is written"
+        default n
+        help
+            Only for testing flash auto-suspend: normally the screen is turned off while an update is
+            written, because the flash writes make it flicker. Never release a build with this on.
+
 endmenu

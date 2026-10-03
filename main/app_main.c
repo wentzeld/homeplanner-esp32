@@ -42,6 +42,8 @@ static void computer_signed_in(void) { UI(ui_web_signed_in()); }
 
 static void update_changed(void) { UI(ui_update_changed()); }
 
+static void update_screen(bool on) { board_backlight_hold(!on); }
+
 static void google_changed(void) {
     if (s_main_task) xTaskNotifyGive(s_main_task);
 }
@@ -154,6 +156,7 @@ static void run_mode(hp_settings_t *s) {
 void app_main(void) {
     update_boot();  // first: a just-installed version must prove itself (see update.h)
     update_set_listener(update_changed);
+    update_set_screen_hook(update_screen);
     ESP_ERROR_CHECK(board_init());
     ui_set_change_settings_cb(restart_into_setup);
     UI(ui_show_status("HomePlanner", "Starting..."));

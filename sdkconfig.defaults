@@ -67,3 +67,7 @@ CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
 
 # Over-the-air updates: a new version that doesn't confirm itself goes back to the previous one.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# Run the firmware from PSRAM: flash writes then don't pause the cache, which stalled the display's
+# picture memory and showed as blue flashes.
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
