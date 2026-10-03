@@ -1,0 +1,18 @@
+menu "HomePlanner: Sign in with Google"
+
+    config HP_GOOGLE_CLIENT_ID
+        string "OAuth client ID"
+        default ""
+        help
+            The project's Google OAuth client (type "Web application"), e.g.
+            1234-abc.apps.googleusercontent.com. Set it in secrets.defaults (see README).
+
+    config HP_GOOGLE_CLIENT_SECRET
+        string "OAuth client secret"
+        default ""
+
+    config HP_GOOGLE_REDIRECT_URI
+        string "Sign-in relay page (registered as the client's redirect URI)"
+        default "https://wentzeld.github.io/homeplanner-esp32/oauth.html"
+
+endmenu

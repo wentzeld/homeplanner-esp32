@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>HomePlanner sign-in</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f7f9; --fg:#1d2330; --muted:#5f6673; --accent:#1a73e8; --card:#fff; --line:#dde1e7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e8eaed; --muted:#9aa0a6; --accent:#8ab4f8; --card:#181b22; --line:#2a2f3a; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; }
+  main { max-width:480px; margin:12vh auto 0; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:24px; }
+  h1 { font-size:1.4rem; margin:0 0 .6rem; }
+  p { color:var(--muted); }
+  a.button { display:block; text-align:center; background:var(--accent); color:#fff; text-decoration:none; font-weight:600; border-radius:10px; padding:.85rem; margin-top:1rem; }
+  @media (prefers-color-scheme: dark) { a.button { color:#0b1220; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Returning to HomePlanner…</h1>
+  <p id="text">Finishing your Google sign-in on the panel.</p>
+  <a id="go" class="button" hidden>Return to HomePlanner</a>
+</main>
+<script src="relay.js"></script>
+<script>
+  const t = relayTarget(location.search);
+  history.replaceState(null, "", location.pathname);  // don't keep the code in the history
+  if (t.error) {
+    document.getElementById("title").textContent = "Nothing to do here";
+    document.getElementById("text").textContent = t.error;
+  } else {
+    const go = document.getElementById("go");
+    go.href = t.url;
+    go.hidden = false;  // if the browser doesn't follow the automatic jump, a tap does it
+    document.getElementById("text").textContent =
+      "If nothing happens, make sure this phone or computer is on the same Wi-Fi as the panel, then tap the button.";
+    location.replace(t.url);
+  }
+</script>
+</body>
+</html>

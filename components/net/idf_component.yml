@@ -1,0 +1,8 @@
+# Wi-Fi runs on the ESP32-C6 co-processor over SDIO (esp_hosted), exposed through the
+# standard esp_wifi API by esp_wifi_remote. Host version matches the C6's factory
+# firmware (ESP-Hosted v2.12.3) to avoid the cross-major compatibility mode.
+dependencies:
+  idf:
+    version: ">=5.5.4,<5.6"
+  espressif/esp_hosted: "2.12.3"
+  espressif/esp_wifi_remote: ">=0.16.1"

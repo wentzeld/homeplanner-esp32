@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HomePlanner privacy policy</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f7f9; --fg:#1d2330; --muted:#5f6673; --accent:#1a73e8; --card:#fff; --line:#dde1e7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e8eaed; --muted:#9aa0a6; --accent:#8ab4f8; --card:#181b22; --line:#2a2f3a; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; }
+  main { max-width:720px; margin:4vh auto; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:28px; }
+  h1 { margin-top:0; } a { color:var(--accent); } li { margin:.3rem 0; } .muted { color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy policy</h1>
+  <p class="muted">HomePlanner (ESP32 panel) · last updated 3 October 2026</p>
+
+  <p>HomePlanner is open-source software that runs on a calendar panel in your own home. This policy explains what it
+    does with your Google account data. In short: <b>your data stays between Google and your panel.</b></p>
+
+  <h2>What HomePlanner accesses</h2>
+  <p>When you choose <i>Sign in with Google</i> on the panel's settings page, you allow the panel to:</p>
+  <ul>
+    <li><b>View and edit events on your calendars</b> (<code>calendar.events</code>): to show the events of the calendar you
+      choose, and to add, change or delete events when someone does that on the panel. If you choose other Google
+      calendars to show, their events are read (never changed).</li>
+    <li><b>See the list of your calendars</b> (<code>calendar.calendarlist.readonly</code>): so you can pick your family
+      calendar and any others to show.</li>
+    <li><b>See your email address</b> (<code>email</code>, <code>openid</code>): to show which account is connected.</li>
+  </ul>
+
+  <h2>Where your data goes</h2>
+  <ul>
+    <li>The panel talks <b>directly to Google</b> over an encrypted connection. There is no HomePlanner server; the
+      developers never receive your calendar data, your email address or your sign-in.</li>
+    <li>The panel keeps a copy of upcoming events and its Google sign-in (a refresh token) in its own memory, so it works
+      after a restart. Nothing is sent anywhere else.</li>
+    <li>During sign-in, Google returns you through a static page
+      (<code>wentzeld.github.io/homeplanner-esp32/oauth.html</code>) that only passes a one-time code back to the panel
+      in your home. That page stores nothing and the code is useless to anyone else.</li>
+    <li>No analytics, no advertising, no tracking, no selling or sharing of data.</li>
+  </ul>
+  <p>HomePlanner's use and transfer of information received from Google APIs adheres to the
+    <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
+    including the Limited Use requirements.</p>
+
+  <h2>Removing access</h2>
+  <ul>
+    <li>On the panel's settings page, choose <b>Disconnect Google</b>: the panel deletes its sign-in and tells Google to
+      withdraw it.</li>
+    <li>Or remove HomePlanner at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+    <li>Resetting the panel (erasing its flash memory) removes everything it stored.</li>
+  </ul>
+
+  <h2>Contact</h2>
+  <p>Questions: open an issue at
+    <a href="https://github.com/wentzeld/homeplanner-esp32/issues">github.com/wentzeld/homeplanner-esp32/issues</a>.</p>
+</main>
+</body>
+</html>

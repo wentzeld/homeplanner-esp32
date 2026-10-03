@@ -1,0 +1,66 @@
+# --- Chip: CrowPanel Advance 10.1" uses ESP32-P4 v1.x silicon -------------------------
+CONFIG_IDF_TARGET="esp32p4"
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
+
+# --- Flash and partitions -----------------------------------------------------------------
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# --- PSRAM (32 MB). 200 MHz is required to avoid display underruns at 1024x600;
+# it is only honoured with experimental features enabled. -----------------------------------
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_HEX=y
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_USE_MALLOC=y
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
+
+# --- FreeRTOS / tasks -----------------------------------------------------------------------
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# --- Display (MIPI-DSI) ------------------------------------------------------------------------
+CONFIG_LCD_DSI_ISR_HANDLER_IN_IRAM=y
+
+# --- LVGL 9 ---------------------------------------------------------------------------------------
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
+CONFIG_LV_DEF_REFR_PERIOD=16
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_FONT_MONTSERRAT_18=y
+CONFIG_LV_FONT_MONTSERRAT_24=y
+CONFIG_LV_FONT_MONTSERRAT_32=y
+CONFIG_LV_FONT_MONTSERRAT_48=y
+CONFIG_LV_FONT_DEFAULT_MONTSERRAT_18=y
+CONFIG_LV_USE_QRCODE=y
+CONFIG_LV_USE_LOG=y
+CONFIG_LV_LOG_LEVEL_WARN=y
+
+# --- Wi-Fi: ESP32-C6 co-processor over SDIO (esp_hosted), board V1.2 -------------------------------
+# Elecrow's example defaults are wrong for V1.2 (V1.0 data-line order, reset on GPIO54).
+# Pins from the community-verified fix (Elecrow-RD/...-10.1inch issue #10): data lines D0..D3 =
+# 17,16,15,14, and the C6's EN pin is wired straight to GPIO32 (pulled up; high = running).
+# Reset polarity: in esp_hosted 2.12.x "Active High" pulses High->Low->High and leaves the pin HIGH,
+# which keeps EN high so the C6 runs. (Issue #10 recommends "Active Low" for esp_hosted 3.x, where the
+# meaning is reversed; with 2.12.3 "Active Low" parks EN low and holds the C6 in reset - measured.)
+CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
+CONFIG_ESP_HOSTED_SDIO_SLOT_1=y
+CONFIG_ESP_HOSTED_SDIO_4_BIT_BUS=y
+CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=20000
+CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CLK_SLOT_1=18
+CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CMD_SLOT_1=19
+CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D0_SLOT_1=17
+CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D1_4BIT_BUS_SLOT_1=16
+CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D2_4BIT_BUS_SLOT_1=15
+CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_D3_4BIT_BUS_SLOT_1=14
+CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=32
+CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_HIGH=y
+# CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW is not set
+CONFIG_SLAVE_IDF_TARGET_ESP32C6=y

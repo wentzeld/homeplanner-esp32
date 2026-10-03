@@ -1,0 +1,9 @@
+build/
+managed_components/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+.DS_Store
+tests/host/fixtures/
+# The Google sign-in client (ID and secret) for your builds: never commit it.
+secrets.defaults

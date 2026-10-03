@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HomePlanner</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f7f9; --fg:#1d2330; --muted:#5f6673; --accent:#1a73e8; --card:#fff; --line:#dde1e7; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --fg:#e8eaed; --muted:#9aa0a6; --accent:#8ab4f8; --card:#181b22; --line:#2a2f3a; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; }
+  main { max-width:680px; margin:6vh auto; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:28px; }
+  h1 { margin-top:0; } a { color:var(--accent); } li { margin:.3rem 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>HomePlanner</h1>
+  <p>HomePlanner is a family wall calendar for a touch screen in your home (an ESP32-P4 panel). It shows your family's
+    Google Calendar for the week, lets anyone at home add and change events from the wall, and shows the weather.</p>
+  <h2>What it does with your Google account</h2>
+  <ul>
+    <li>Shows and changes the events of the calendar you choose (your "Family" calendar) on the panel.</li>
+    <li>Lists your calendars, so you can choose the Family calendar and, if you like, show other calendars (for example
+      a school calendar) on the panel.</li>
+    <li>Shows your email address on the panel's settings page, so you know which account is connected.</li>
+  </ul>
+  <p>Your calendar data goes only between Google and the panel in your home. There is no HomePlanner server, no
+    tracking, and nothing is shared with anyone. Read the <a href="privacy.html">privacy policy</a>.</p>
+  <p>Open source (MIT): <a href="https://github.com/wentzeld/homeplanner-esp32">github.com/wentzeld/homeplanner-esp32</a></p>
+</main>
+</body>
+</html>

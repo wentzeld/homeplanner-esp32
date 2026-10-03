@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HomePlanner</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --fg:#e8eaed; --muted:#9aa0a6; --accent:#8ab4f8; --danger:#f28b82; --ok:#81c995; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; }
+  main { max-width:560px; margin:0 auto; }
+  h1 { font-size:1.5rem; margin:.2rem 0 1rem; }
+  h2 { font-size:1.1rem; margin:0 0 .6rem; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+  label { display:block; margin:.6rem 0 .25rem; color:var(--muted); font-size:.9rem; }
+  input, select { width:100%; font:inherit; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:.55rem .65rem; }
+  input:focus, select:focus { outline:2px solid var(--accent); border-color:transparent; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  .row input { flex:1; }
+  .row select { width:9.5rem; flex:none; }
+  .swatch { width:22px; height:22px; border-radius:50%; flex:none; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  button { font:inherit; color:var(--fg); background:var(--card); border:1px solid var(--line); border-radius:8px; padding:.5rem .9rem; }
+  button.primary { background:var(--accent); color:#0b1220; border-color:var(--accent); font-weight:600; width:100%; padding:.8rem; font-size:1.05rem; }
+  button.icon { padding:.4rem .7rem; flex:none; }
+  .muted { color:var(--muted); font-size:.9rem; }
+  .ok { color:var(--ok); } .err { color:var(--danger); }
+  textarea { width:100%; font:13px/1.3 ui-monospace,Menlo,monospace; color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:.5rem; resize:vertical; }
+  details summary { color:var(--accent); cursor:pointer; margin-top:.6rem; }
+  code { background:var(--bg); padding:0 .3rem; border-radius:4px; word-break:break-all; }
+  #message { margin:.8rem 0 0; font-weight:600; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+  .link { background:none; border:none; color:var(--accent); padding:0; cursor:pointer; text-decoration:underline; }
+  .code { font:600 1.8rem/1 ui-monospace,Menlo,monospace; letter-spacing:.3em; text-align:center; }
+  .cal { border-top:1px solid var(--line); padding:10px 0; }
+  .cal:first-child { border-top:none; }
+  .cal .row { margin-top:0; }
+  .cal .status { margin:.3rem 0 0 30px; }
+  .cal .actions { display:flex; gap:8px; margin:.4rem 0 0 30px; }
+  .cal input.name { font-weight:600; }
+  h3 { font-size:1rem; margin:1rem 0 .2rem; }
+  .pick { display:flex; gap:10px; align-items:center; margin:8px 0; color:var(--fg); font-size:1rem; }
+  .pick input { width:auto; flex:none; margin:0; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1 id="title">HomePlanner</h1>
+    <button id="logout" class="link" type="button" hidden>Sign out</button>
+  </header>
+  <p id="intro" class="muted"></p>
+
+  <section id="login" hidden>
+    <h2>Sign in</h2>
+    <p class="muted">On the panel, tap the <b>gear</b> and choose <b>Manage from computer</b>. Then enter the 6-digit code it shows.</p>
+    <label for="code">Code</label>
+    <input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456">
+    <p id="login_message" role="status"></p>
+    <button id="login_button" class="primary" type="button">Sign in</button>
+  </section>
+
+  <div id="main" hidden>
+
+  <section id="wifi_section">
+    <h2>Home Wi-Fi</h2>
+    <label for="ssid">Network</label>
+    <select id="ssid"><option value="">Scanning…</option></select>
+    <input id="ssid_other" placeholder="Network name" hidden>
+    <label for="wifi_pass">Password</label>
+    <input id="wifi_pass" type="password" autocomplete="off">
+    <label for="timezone">Timezone</label>
+    <select id="timezone"></select>
+  </section>
+
+  <section id="google_section" class="run_only">
+    <h2>Google account</h2>
+    <div id="google_out">
+      <p class="muted">Sign in with the Google account that has your family calendar. The panel only reads and
+        changes calendar events, and lists your calendars.</p>
+      <button id="google_signin" class="primary" type="button">Sign in with Google</button>
+      <p class="muted">Google may warn that it hasn't verified this app yet: tap <i>Advanced</i> → <i>Go to HomePlanner</i>.</p>
+    </div>
+    <div id="google_in" hidden>
+      <p class="ok" id="google_who"></p>
+      <label for="calendar_id">Family calendar</label>
+      <select id="calendar_id"><option value="">Loading your calendars…</option></select>
+      <p class="muted">The calendar the panel shows and adds events to. Everyone in the family should see it in their own Google Calendar.</p>
+      <div class="row"><button id="google_disconnect" class="link" type="button">Disconnect Google</button></div>
+    </div>
+    <p id="google_message" role="status"></p>
+  </section>
+
+  <section class="run_only">
+    <h2>Family</h2>
+    <p class="muted">Each person gets their own color, the same color their events have in Google Calendar.</p>
+    <div id="members"></div>
+    <div class="row"><button id="add_member" type="button">+ Add person</button></div>
+  </section>
+
+  <section id="calendars_section" hidden>
+    <h2>Other calendars</h2>
+    <p class="muted">Show public calendars, like your school's or sports club's, next to the Family calendar
+      (read-only, in their own color). Paste their iCal link: it usually ends in <code>.ics</code> or starts with <code>webcal://</code>.</p>
+    <div id="calendar_list"></div>
+    <p id="no_calendars" class="muted" hidden>No other calendars yet.</p>
+    <h3>From your Google account</h3>
+    <div id="google_calendars"><p class="muted">Sign in with Google above to choose from your calendars.</p></div>
+    <h3>Add an iCal link</h3>
+    <label for="cal_name">Name (shown on the panel)</label>
+    <input id="cal_name" maxlength="40" autocomplete="off" placeholder="e.g. Lincoln Elementary">
+    <label for="cal_url">iCal link</label>
+    <input id="cal_url" autocomplete="off" spellcheck="false" placeholder="https://… or webcal://…">
+    <label for="cal_color">Color</label>
+    <div class="row"><span id="cal_swatch" class="swatch"></span><select id="cal_color"></select></div>
+    <p id="cal_message" role="status"></p>
+    <button id="cal_add" class="primary" type="button">Add calendar</button>
+    <p class="muted">Calendar changes apply right away. For a Google calendar, use <i>Settings and sharing → Integrate calendar →
+      Secret address in iCal format</i>.</p>
+  </section>
+
+  <section class="run_only">
+    <h2>Weather</h2>
+    <label for="place">City or ZIP code (for the weather)</label>
+    <input id="place" placeholder="e.g. 98101 or Seattle" autocomplete="off">
+    <p class="muted">A ZIP/postal code is the most precise. The panel looks it up once it's online and shows what it found.</p>
+    <details>
+      <summary>Advanced: enter map coordinates instead</summary>
+      <div class="two">
+        <div><label for="lat">Latitude</label><input id="lat" inputmode="decimal" placeholder="47.61"></div>
+        <div><label for="lon">Longitude</label><input id="lon" inputmode="decimal" placeholder="-122.33"></div>
+      </div>
+    </details>
+    <label for="units">Temperature</label>
+    <select id="units"><option value="fahrenheit">°F (Fahrenheit)</option><option value="celsius">°C (Celsius)</option></select>
+  </section>
+
+  <section class="run_only">
+    <h2>Screen sleep</h2>
+    <div class="two">
+      <div><label for="sleep_off">Screen off at</label><input id="sleep_off" type="time" value="22:00"></div>
+      <div><label for="sleep_on">Screen on at</label><input id="sleep_on" type="time" value="06:30"></div>
+    </div>
+    <label for="wake">After a touch at night, stay on for (minutes)</label>
+    <input id="wake" type="number" min="1" max="60" value="5">
+  </section>
+
+  <p id="save_note" class="muted" hidden>Saving these settings restarts the panel (about 30 seconds).</p>
+  <button id="save" class="primary" type="button">Save and start</button>
+  <p id="message" role="status"></p>
+  </div>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let COLORS = [], PALETTE = [], GCALS = null, state = {};
+const RUN = () => state.mode === "run";
+
+// All POSTs carry X-HomePlanner: the panel refuses requests other web pages could make.
+async function api(path, body) {
+  const opts = body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json", "X-HomePlanner": "1" }, body: JSON.stringify(body) };
+  const resp = await fetch(path, opts);
+  if (resp.status === 401) { showLogin(); throw new Error("Please sign in again."); }
+  if (!resp.ok) throw new Error(`The panel answered with an error (${resp.status}).`);
+  return resp.json();
+}
+
+function say(el, text, cls) { el.className = `${el.dataset.base || ""} ${cls || "muted"}`.trim(); el.textContent = text; }
+
+function option(value, text, selected) {
+  const o = document.createElement("option");
+  o.value = value; o.textContent = text; o.selected = !!selected;
+  return o;
+}
+
+function memberRow(m) {
+  const row = document.createElement("div");
+  row.className = "row";
+  const name = document.createElement("input");
+  name.placeholder = "Name"; name.value = m.name || ""; name.maxLength = 40;
+  const sw = document.createElement("span"); sw.className = "swatch";
+  const sel = document.createElement("select");
+  for (const c of COLORS) sel.append(option(c.id, c.name, c.id === m.color_id));
+  const paint = () => { sw.style.background = (COLORS.find((c) => c.id === sel.value) || {}).hex; };
+  sel.onchange = paint; paint();
+  const del = document.createElement("button");
+  del.type = "button"; del.className = "icon"; del.textContent = "✕"; del.title = "Remove";
+  del.onclick = () => row.remove();
+  row.append(name, sw, sel, del);
+  $("members").append(row);
+}
+
+function nextFreeColor() {
+  const used = new Set([...document.querySelectorAll("#members select")].map((s) => s.value));
+  return (COLORS.find((c) => !used.has(c.id)) || COLORS[0]).id;
+}
+
+async function loadNetworks(selected) {
+  const sel = $("ssid");
+  try {
+    const list = await api("/api/networks");
+    sel.replaceChildren();
+    for (const n of list) sel.append(option(n.ssid, `${n.ssid}${n.secure ? "" : " (open)"}`, n.ssid === selected));
+    if (selected && !list.some((n) => n.ssid === selected)) sel.prepend(option(selected, selected, true));
+  } catch { sel.replaceChildren(); }
+  sel.append(option("__other", "Other network…"));
+  sel.onchange = () => { $("ssid_other").hidden = sel.value !== "__other"; };
+}
+
+
+$("add_member").onclick = () => {
+  if (document.querySelectorAll("#members .row").length >= 8) return;
+  memberRow({ color_id: nextFreeColor() });
+};
+
+$("save").onclick = async () => {
+  const msg = $("message");
+  const ssid = $("ssid").value === "__other" ? $("ssid_other").value.trim() : $("ssid").value;
+  if (!RUN()) {
+    const wifi = { wifi_ssid: ssid, timezone: $("timezone").value };
+    if ($("wifi_pass").value || !state.settings || state.settings.wifi_ssid !== ssid) wifi.wifi_pass = $("wifi_pass").value;
+    return saveBody(wifi);
+  }
+  if (!state.google || !state.google.connected) { msg.className = "err"; msg.textContent = "Sign in with Google first (at the top)."; return; }
+  if (!$("calendar_id").value) { msg.className = "err"; msg.textContent = "Choose your Family calendar."; return; }
+  const body = {
+    wifi_ssid: ssid,
+    calendar_id: $("calendar_id").value.trim(),
+    timezone: $("timezone").value,
+    members: [...document.querySelectorAll("#members .row")].map((r) => ({
+      name: r.querySelector("input").value.trim(), color_id: r.querySelector("select").value })),
+    place: $("place").value.trim(),
+    latitude: $("lat").value.trim() ? parseFloat($("lat").value) : null,
+    longitude: $("lon").value.trim() ? parseFloat($("lon").value) : null,
+    units: $("units").value,
+    sleep_off: $("sleep_off").value, sleep_on: $("sleep_on").value,
+    wake_minutes: parseInt($("wake").value, 10),
+  };
+  if ($("wifi_pass").value || !state.settings || state.settings.wifi_ssid !== ssid) body.wifi_pass = $("wifi_pass").value;
+  if (!body.place && (body.latitude === null || body.longitude === null)) { msg.className = "err"; msg.textContent = "Enter your city or ZIP code (for the weather)."; return; }
+  if (Number.isNaN(body.latitude) || Number.isNaN(body.longitude)) { msg.className = "err"; msg.textContent = "The coordinates must be numbers."; return; }
+  if (body.place) { body.latitude = null; body.longitude = null; }  // a new place is looked up again
+  return saveBody(body);
+};
+
+async function saveBody(body) {
+  const msg = $("message");
+  $("save").disabled = true; msg.className = "muted"; msg.textContent = "Saving…";
+  try {
+    const r = await api("/api/save", body);
+    if (!r.ok) throw new Error(r.error);
+    msg.className = "ok";
+    msg.textContent = RUN()
+      ? `Saved! The panel is restarting. Reload this page in a minute.`
+      : `Saved! The panel is restarting and joining “${r.wifi_ssid}”. Switch your phone back to your normal Wi-Fi, then scan the QR code the panel shows.`;
+  } catch (e) {
+    msg.className = "err"; msg.textContent = e.message || "Couldn't reach the panel.";
+    $("save").disabled = false;
+  }
+}
+
+// --- Other calendars ---------------------------------------------------------------------------
+
+function paletteSelect(sel, swatch, value) {
+  sel.replaceChildren(...PALETTE.map((c) => option(c.id, c.name, c.id === value)));
+  const paint = () => { swatch.style.background = (PALETTE.find((c) => c.id === sel.value) || {}).hex; };
+  sel.addEventListener("change", paint); paint();
+}
+
+function ago(seconds) {
+  const m = Math.round((Date.now() / 1000 - seconds) / 60);
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
+}
+
+function copyText(text) {  // the page is plain http, where navigator.clipboard isn't available
+  const t = Object.assign(document.createElement("textarea"), { value: text });
+  t.style.position = "fixed"; t.style.opacity = "0";
+  document.body.append(t); t.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  t.remove();
+  return ok;
+}
+
+async function updateCalendar(cal, change, status) {
+  say(status, "Saving…");
+  try {
+    const r = await api("/api/calendars/update", { id: cal.id, ...change });
+    if (!r.ok) throw new Error(r.error);
+    Object.assign(cal, change);
+    say(status, "Saved ✓", "ok");
+  } catch (e) { say(status, e.message, "err"); }
+}
+
+function calendarRow(cal) {
+  const box = document.createElement("div"); box.className = "cal";
+  const row = document.createElement("div"); row.className = "row";
+  const sw = document.createElement("span"); sw.className = "swatch";
+  const name = Object.assign(document.createElement("input"), { value: cal.name, maxLength: 40, className: "name", title: "Name" });
+  const sel = document.createElement("select"); sel.title = "Color";
+  row.append(sw, name, sel);
+  const status = document.createElement("p"); status.dataset.base = "status";
+  if (cal.error) say(status, `Last update failed: ${cal.error}`, "err");
+  else say(status, cal.last_updated ? `Updated ${ago(cal.last_updated)}` : "Loading on the panel…");
+  const actions = document.createElement("div"); actions.className = "actions";
+  const copy = Object.assign(document.createElement("button"), { type: "button", textContent: "Copy link" });
+  const del = Object.assign(document.createElement("button"), { type: "button", textContent: "Remove" });
+  if (cal.kind === "google") actions.append(del); else actions.append(copy, del);
+  box.append(row, status, actions);
+  paletteSelect(sel, sw, cal.color);
+
+  const saveName = () => { const v = name.value.trim(); if (v && v !== cal.name) updateCalendar(cal, { name: v }, status); };
+  name.addEventListener("change", saveName);
+  name.addEventListener("keydown", (e) => { if (e.key === "Enter") name.blur(); });
+  sel.addEventListener("change", () => updateCalendar(cal, { color: sel.value }, status));
+  copy.onclick = () => {
+    const ok = copyText(cal.url);
+    say(status, ok ? "Link copied ✓" : `Copy this link: ${cal.url}`, ok ? "ok" : "muted");
+  };
+  del.onclick = async () => {
+    if (!confirm(`Remove “${cal.name}” from the panel?`)) return;
+    try {
+      const r = await api("/api/calendars/update", { id: cal.id, remove: true });
+      if (!r.ok) throw new Error(r.error);
+      state.calendars = state.calendars.filter((c) => c !== cal);
+      renderCalendars();
+      if (cal.kind === "google") renderGoogle();
+    } catch (e) { say(status, e.message, "err"); }
+  };
+  return box;
+}
+
+function renderCalendars() {
+  const cals = state.calendars || [];
+  $("calendar_list").replaceChildren(...cals.map(calendarRow));
+  $("no_calendars").hidden = cals.length > 0;
+  const full = cals.length >= (state.max_calendars || 10);
+  $("cal_add").disabled = full;
+  if (full) say($("cal_message"), "That's the most calendars the panel shows. Remove one to add another.");
+  const used = new Set(cals.map((c) => c.color));
+  const free = PALETTE.find((c) => !used.has(c.id) && !COLORS.some((m) => m.id === c.id)) || PALETTE[0];
+  $("cal_color").value = free.id; $("cal_color").dispatchEvent(new Event("change"));
+}
+
+$("cal_add").onclick = async () => {
+  const msg = $("cal_message");
+  const body = { name: $("cal_name").value.trim(), url: $("cal_url").value.trim(), color: $("cal_color").value };
+  if (!body.name) return say(msg, "Give the calendar a name.", "err");
+  if (!body.url) return say(msg, "Paste the calendar's iCal link.", "err");
+  $("cal_add").disabled = true;
+  say(msg, "The panel is downloading and checking the calendar… (up to a minute for big calendars)");
+  try {
+    const r = await api("/api/calendars/add", body);
+    if (!r.ok) throw new Error(r.error);
+    say(msg, `Added ✓ ${r.upcoming} ${r.upcoming === 1 ? "event" : "events"} in the next ${r.upcoming_days} days.`, "ok");
+    $("cal_name").value = ""; $("cal_url").value = "";
+    const fresh = await api("/api/state");
+    state.calendars = fresh.calendars;
+    renderCalendars();
+  } catch (e) { say(msg, e.message, "err"); }
+  $("cal_add").disabled = (state.calendars || []).length >= (state.max_calendars || 10);
+};
+
+// --- Google account -------------------------------------------------------------------------------
+
+const GOOGLE_RESULTS = {
+  connected: ["Connected to Google ✓ Now choose your Family calendar.", "ok"],
+  cancelled: ["Google sign-in was cancelled.", "err"],
+  failed: ["Google sign-in didn't work. Please try again.", "err"],
+  stale: ["That sign-in took too long or was already used. Please try again.", "err"],
+};
+
+$("google_signin").onclick = async () => {
+  const msg = $("google_message");
+  $("google_signin").disabled = true; say(msg, "Opening Google…");
+  try {
+    const r = await api("/api/google/start", {});
+    if (!r.ok) throw new Error(r.error);
+    location.href = r.url;
+  } catch (e) { say(msg, e.message, "err"); $("google_signin").disabled = false; }
+};
+
+$("google_disconnect").onclick = async () => {
+  if (!confirm("Disconnect Google? The panel stops showing your calendar until you sign in again.")) return;
+  try {
+    await api("/api/google/disconnect", {});
+    state.google.connected = false; GCALS = null;
+    renderGoogle();
+  } catch (e) { say($("google_message"), e.message, "err"); }
+};
+
+// The palette color closest to the calendar's color in Google (unused ones first).
+function nearestColor(hex, free) {
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt((h || "#888888").slice(i, i + 2), 16));
+  const [r, g, b] = rgb(hex);
+  const pool = free.length ? free : PALETTE;
+  const dist = (p) => { const [x, y, z] = rgb(p.hex); return (x - r) ** 2 + (y - g) ** 2 + (z - b) ** 2; };
+  return pool.reduce((best, p) => (dist(p) < dist(best) ? p : best), pool[0]).id;
+}
+
+function calendarName(c) { return c.summaryOverride || c.summary || c.id; }
+
+async function loadGoogleCalendars() {
+  try {
+    const r = await api("/api/google/calendars");
+    if (!r.ok) throw new Error(r.error);
+    GCALS = r.calendars;
+  } catch (e) { GCALS = []; say($("google_message"), e.message, "err"); }
+  renderGoogle();
+}
+
+function renderGoogle() {
+  const g = state.google || {};
+  $("google_out").hidden = !!g.connected; $("google_in").hidden = !g.connected;
+  if (!g.configured) {
+    $("google_signin").disabled = true;
+    say($("google_message"), "This panel's software has no Google sign-in set up (see the README).", "err");
+  }
+  if (!g.connected) {
+    $("google_calendars").replaceChildren(Object.assign(document.createElement("p"),
+      { className: "muted", textContent: "Sign in with Google above to choose from your calendars." }));
+    return;
+  }
+  $("google_who").textContent = `Connected as ${g.email || "your Google account"} ✓`;
+  if (!GCALS) { loadGoogleCalendars(); return; }
+  // Family calendar: the ones you can change.
+  const current = (state.settings || {}).calendar_id || "";
+  const writable = GCALS.filter((c) => c.accessRole === "owner" || c.accessRole === "writer");
+  $("calendar_id").replaceChildren(option("", "Choose…"), ...writable.map((c) => option(c.id, calendarName(c) + (c.primary ? " (your own)" : ""), c.id === current)));
+  if (current && !writable.some((c) => c.id === current))
+    $("calendar_id").append(option(current, "The calendar chosen before (no access with this account)", true));
+  if (!current) {  // a calendar named like "Family" is the likely choice
+    const fam = writable.find((c) => /famil/i.test(calendarName(c)));
+    if (fam) $("calendar_id").value = fam.id;
+  }
+  // Other calendars from the account: tick to show them on the panel.
+  const family = $("calendar_id").value;
+  const rows = GCALS.filter((c) => c.id !== family).map((c) => {
+    const added = (state.calendars || []).find((x) => x.kind === "google" && x.google_id === c.id);
+    const row = document.createElement("label"); row.className = "pick";
+    const box = Object.assign(document.createElement("input"), { type: "checkbox", checked: !!added });
+    const sw = document.createElement("span"); sw.className = "swatch"; sw.style.background = c.backgroundColor || "#888";
+    row.append(box, sw, document.createTextNode(calendarName(c)));
+    box.onchange = () => toggleGoogleCalendar(c, box);
+    return row;
+  });
+  $("google_calendars").replaceChildren(...(rows.length ? rows : [Object.assign(document.createElement("p"),
+    { className: "muted", textContent: "No other calendars in this Google account." })]));
+}
+
+async function toggleGoogleCalendar(c, box) {
+  const msg = $("cal_message");
+  box.disabled = true;
+  try {
+    const added = (state.calendars || []).find((x) => x.kind === "google" && x.google_id === c.id);
+    if (box.checked && !added) {
+      const used = new Set((state.calendars || []).map((x) => x.color));
+      const color = nearestColor(c.backgroundColor, PALETTE.filter((p) => !used.has(p.id)));
+      const r = await api("/api/calendars/add", { kind: "google", google_id: c.id, name: calendarName(c).slice(0, 40), color });
+      if (!r.ok) throw new Error(r.error);
+    } else if (!box.checked && added) {
+      const r = await api("/api/calendars/update", { id: added.id, remove: true });
+      if (!r.ok) throw new Error(r.error);
+    }
+    const fresh = await api("/api/state");
+    state.calendars = fresh.calendars;
+    renderCalendars();
+    say(msg, box.checked ? `“${calendarName(c)}” is now on the panel.` : `“${calendarName(c)}” removed.`, "ok");
+  } catch (e) { box.checked = !box.checked; say(msg, e.message, "err"); }
+  box.disabled = false;
+}
+
+$("calendar_id").addEventListener("change", () => {
+  state.settings = { ...(state.settings || {}), calendar_id: $("calendar_id").value };
+  renderGoogle();
+});
+
+// --- Sign in --------------------------------------------------------------------------------------
+
+function showLogin() {
+  $("main").hidden = true; $("logout").hidden = true; $("login").hidden = false;
+  $("intro").textContent = "";
+  $("code").focus();
+}
+
+async function login() {
+  const msg = $("login_message");
+  $("login_button").disabled = true; say(msg, "Checking…");
+  try {
+    const r = await api("/api/login", { code: $("code").value });
+    if (!r.ok) throw new Error(r.error);
+    $("code").value = ""; say(msg, "");
+    await init();
+  } catch (e) { say(msg, e.message, "err"); }
+  $("login_button").disabled = false;
+}
+$("login_button").onclick = login;
+$("code").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+
+$("logout").onclick = async () => {
+  try { await api("/api/logout", {}); } catch { /* signed out either way */ }
+  showLogin();
+};
+
+// --- Start ----------------------------------------------------------------------------------------
+
+let filled = false;
+async function init() {
+  // The panel's QR code carries the one-time code: sign in with it, then drop it from the address.
+  const params = new URLSearchParams(location.search);
+  const qrCode = params.get("code"), googleResult = params.get("google");
+  if (qrCode || googleResult) history.replaceState(null, "", "/");
+  if (qrCode) {
+    try { await api("/api/login", { code: qrCode }); } catch { /* falls back to typing the code */ }
+  }
+  state = await api("/api/state");
+  if (RUN()) {
+    $("title").textContent = "HomePlanner settings";
+    document.title = "HomePlanner settings";
+  } else {
+    $("title").textContent = "Set up HomePlanner";
+    $("intro").textContent = "Step 1 of 2: connect the panel to your home Wi-Fi. Then the panel shows a QR code to finish setting up.";
+  }
+  if (!state.signed_in) return showLogin();
+  $("login").hidden = true; $("main").hidden = false; $("logout").hidden = !RUN();
+  $("calendars_section").hidden = !RUN();
+  for (const el of document.querySelectorAll(".run_only")) el.hidden = !RUN();
+  if (RUN()) $("save_note").before($("wifi_section"));  // rarely changed once set up: at the end
+  $("save_note").hidden = !RUN();
+  const complete = state.settings && state.settings.complete;
+  $("save").textContent = !RUN() ? "Save and connect" : complete ? "Save and restart the panel" : "Save and start";
+  COLORS = state.colors; PALETTE = state.palette;
+  if (RUN()) {
+    $("intro").textContent = complete ? "" : "Almost done: sign in with Google, choose your Family calendar, add your family, and save.";
+    if (!$("cal_color").options.length) paletteSelect($("cal_color"), $("cal_swatch"), "");
+    renderCalendars();
+    renderGoogle();
+    if (googleResult && GOOGLE_RESULTS[googleResult]) say($("google_message"), ...GOOGLE_RESULTS[googleResult]);
+  }
+  if (filled) return;
+  filled = true;
+  const s = state.settings || {};
+  const tzs = await api("/api/timezones");
+  const guess = s.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  for (const t of tzs) $("timezone").append(option(t, t.replace(/_/g, " "), t === guess));
+  $("place").value = s.place || "";
+  if (!s.place) { $("lat").value = s.latitude ?? ""; $("lon").value = s.longitude ?? ""; }
+  $("units").value = s.units || (guess.startsWith("America/") ? "fahrenheit" : "celsius");
+  if (s.sleep_off && s.sleep_off !== "00:00") $("sleep_off").value = s.sleep_off;
+  if (s.sleep_on && s.sleep_on !== "00:00") $("sleep_on").value = s.sleep_on;
+  if (s.wake_minutes) $("wake").value = s.wake_minutes;
+  (s.members && s.members.length ? s.members : [{ color_id: "9" }]).forEach(memberRow);
+  if (s.wifi_ssid) $("wifi_pass").placeholder = "Unchanged";
+  loadNetworks(s.wifi_ssid);
+}
+init().catch((e) => { document.body.prepend(Object.assign(document.createElement("p"), { className: "err", textContent: e.message })); });
+</script>
+</body>
+</html>
