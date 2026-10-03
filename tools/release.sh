@@ -19,19 +19,31 @@ VERSION=$(tr -d ' \n' < version.txt)
 [ -f signing_key.pem ] || die "signing_key.pem is missing (restore it from your backup)"
 [ -f secrets.defaults ] || die "secrets.defaults is missing (the Google sign-in client)"
 command -v idf.py >/dev/null || die "run '. ~/esp/esp-idf/export.sh' first"
-command -v gh >/dev/null || die "the GitHub CLI (gh) is needed"
+GH=$(command -v gh || true)
+for candidate in "$GH" /opt/homebrew/bin/gh; do
+  if [ -n "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then GH=$candidate; break; fi
+  GH=""
+done
+[ -n "$GH" ] || die "a working GitHub CLI is needed (brew install gh), or publish on github.com/…/releases/new"
 CHANGES=$(git status --porcelain) || die "git status failed"
 [ -z "$CHANGES" ] || die "commit your changes first"
 [ -z "$(git log --oneline @{u}..HEAD 2>/dev/null)" ] || die "push your commits first (git push)"
-! git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null || die "v$VERSION exists already: raise version.txt"
+RESUME=""  # the tag may exist from an interrupted run: then only the release is missing
+if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+  [ "$(git rev-list -n1 "v$VERSION")" = "$(git rev-parse HEAD)" ] || die "v$VERSION exists already: raise version.txt"
+  ! "$GH" release view "v$VERSION" >/dev/null 2>&1 || die "release v$VERSION is already published: raise version.txt"
+  RESUME=1
+fi
 
 idf.py build
 espsecure.py verify_signature --version 2 --keyfile signing_key.pem build/homeplanner.bin | grep -q "verification successful" \
   || die "build/homeplanner.bin isn't signed with signing_key.pem"
 grep -q "CONFIG_HP_OTA_TEST_NEVER_GOOD=y" sdkconfig && die "this is a rollback-test build; don't release it"
 
-git tag -s "v$VERSION" -m "HomePlanner $VERSION"
-git push origin "v$VERSION"
+if [ -z "$RESUME" ]; then
+  git tag -s "v$VERSION" -m "HomePlanner $VERSION"
+  git push origin "v$VERSION"
+fi
 if [ $# -gt 0 ]; then NOTES=(--notes "$1"); else NOTES=(--generate-notes); fi
-gh release create "v$VERSION" build/homeplanner.bin --title "HomePlanner $VERSION" "${NOTES[@]}"
+"$GH" release create "v$VERSION" build/homeplanner.bin --title "HomePlanner $VERSION" "${NOTES[@]}"
 echo "Released $VERSION. Panels find it within a day, or right away with Check now."
