@@ -2,6 +2,8 @@
 // examples (Lesson07 display, Lesson09 touch); see README for sources.
 #include "board.h"
 
+#include <string.h>
+
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/ledc.h"
@@ -205,3 +207,15 @@ esp_err_t board_init(void) {
 
 lv_display_t *board_display(void) { return s_disp; }
 lv_indev_t *board_touch(void) { return s_indev; }
+
+bool board_copy_screen(uint16_t *out) {
+    void *fb[2] = {0};
+    if (!s_panel || !s_disp || esp_lcd_dpi_panel_get_frame_buffer(s_panel, 2, &fb[0], &fb[1]) != ESP_OK) return false;
+    if (!lvgl_port_lock(0)) return false;
+    // LVGL draws into the active buffer; the other one is on screen.
+    lv_draw_buf_t *drawing = lv_display_get_buf_active(s_disp);
+    const void *shown = drawing && drawing->data == fb[0] ? fb[1] : fb[0];
+    memcpy(out, shown, (size_t)BOARD_LCD_H_RES * BOARD_LCD_V_RES * sizeof *out);
+    lvgl_port_unlock();
+    return true;
+}

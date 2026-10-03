@@ -1,0 +1,9 @@
+menu "HomePlanner: demo"
+    config HP_DEMO
+        bool "Demo mode: made-up family, events and weather"
+        default n
+        help
+            Shows a made-up family calendar instead of Google (for screenshots), with no Google
+            sign-in, no update checks and nothing saved to flash. Build it with tools/demo.sh.
+            Never release a build with this on.
+endmenu

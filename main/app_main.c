@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "board.h"
+#include "demo.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "esp_system.h"
@@ -17,6 +18,12 @@
 #include "update.h"
 #include "weather.h"
 #include "web.h"
+#include "esp_heap_caps.h"
+#include "sdkconfig.h"
+
+#ifndef CONFIG_HP_DEMO
+#define CONFIG_HP_DEMO 0
+#endif
 
 static const char *TAG = "main";
 static TaskHandle_t s_main_task;  // runs supervise()
@@ -56,6 +63,18 @@ static bool calendar_status(const char *id, web_calendar_status_t *out) {
     return model_calendar_status(id, &out->last_updated, out->error, sizeof out->error);
 }
 
+#if CONFIG_HP_DEMO
+static uint16_t *screenshot(int *width, int *height) {
+    uint16_t *px = heap_caps_malloc((size_t)BOARD_LCD_H_RES * BOARD_LCD_V_RES * sizeof *px, MALLOC_CAP_SPIRAM);
+    if (px && !board_copy_screen(px)) {
+        free(px);
+        px = NULL;
+    }
+    *width = BOARD_LCD_H_RES, *height = BOARD_LCD_V_RES;
+    return px;
+}
+#endif
+
 static const web_hooks_t WEB_HOOKS = {
     .settings_saved = settings_saved,
     .calendar_added = calendar_added,
@@ -63,6 +82,9 @@ static const web_hooks_t WEB_HOOKS = {
     .calendar_status = calendar_status,
     .signed_in = computer_signed_in,
     .google_changed = google_changed,
+#if CONFIG_HP_DEMO
+    .screenshot = screenshot,
+#endif
 };
 
 static void run_setup_mode(void) {
@@ -81,7 +103,7 @@ static void run_setup_mode(void) {
 static void supervise(hp_settings_t *s) {
     bool calendar = false, qr = false;
     for (;;) {
-        bool ready = s->complete && gauth_signed_in();
+        bool ready = CONFIG_HP_DEMO || (s->complete && gauth_signed_in());
         if (ready && qr) {
             UI(ui_close_qr());
             qr = false;
@@ -120,7 +142,9 @@ static void run_mode(hp_settings_t *s) {
 
     // A city/ZIP from the setup page is looked up once, now that the panel is online.
     char place[128];
-    if (!s->has_coords && s->place[0]) {
+    if (CONFIG_HP_DEMO) {  // made-up weather, settings left alone
+        snprintf(place, sizeof place, "(demo)");
+    } else if (!s->has_coords && s->place[0]) {
         hp_settings_t updated = *s;
         esp_err_t err = weather_find_place(s->place, &updated.latitude, &updated.longitude, place, sizeof place);
         if (err == ESP_OK) {
@@ -144,12 +168,17 @@ static void run_mode(hp_settings_t *s) {
     }
     // The settings page for phones/computers (after the clock: sign-ins expire after 90 days).
     char refresh[512], email[128];
-    if (settings_load_google(refresh, sizeof refresh, email, sizeof email)) gauth_init(refresh, email);
+    if (!CONFIG_HP_DEMO && settings_load_google(refresh, sizeof refresh, email, sizeof email)) gauth_init(refresh, email);
     if (web_start_run(&WEB_HOOKS, ip) == ESP_OK) {
         UI(ui_set_web_address(ip));
         update_mark_good();  // online with the settings page up: this version works
     }
-    update_start_checks();
+    if (CONFIG_HP_DEMO) {
+        demo_members(&s->cal);  // in memory only: the saved settings keep the real family
+        ESP_LOGW(TAG, "DEMO build: made-up calendar, no update checks");
+    } else {
+        update_start_checks();
+    }
     supervise(s);
 }
 

@@ -1,0 +1,2 @@
+# Demo firmware (tools/demo.sh): made-up family, events and weather. Never released.
+CONFIG_HP_DEMO=y

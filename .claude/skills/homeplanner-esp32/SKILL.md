@@ -71,6 +71,12 @@ tools/ota.sh                      # install build/homeplanner.bin on the panel o
   without it `test_ical` is skipped. The TZ fixture comes from Python `zoneinfo`.
 - Check stack use of new code with `-fstack-usage` (compile commands in `build/compile_commands.json`).
 - The settings page can be tried without the panel against a small mock server serving `components/web/page.html`.
+- **README screenshot / demo:** `tools/demo.sh install` builds `build-demo/` (`-D HP_DEMO=1` → `sdkconfig.demo`,
+  `CONFIG_HP_DEMO`, version `x.y.z-demo`; normal `build/`/`sdkconfig` untouched) and installs it. It shows a made-up
+  family (Alex, Sam, Jordan, Riley; "School", "Soccer club"; `components/model/demo.c`), no Google, no update
+  checks, nothing written to flash. `tools/screenshot.sh` saves `docs/screenshot.png` from `GET /api/screenshot`
+  (demo builds only). Go back with `idf.py build && tools/ota.sh`. Never put real names/events in screenshots.
+  Demo data must behave like Google: `sync_range` asks for a date range, so the demo filters to it.
 
 ## Releasing (owner runs the commands)
 1. Raise `version.txt` (semver; must be newer than every released or rolled-back version).

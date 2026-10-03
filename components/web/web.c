@@ -760,6 +760,45 @@ static esp_err_t update_upload_post(httpd_req_t *req) {
     return send_json(req, o);
 }
 
+// --- Screenshot (demo builds) --------------------------------------------------------------------
+
+static void put32(uint8_t *p, uint32_t v) { p[0] = v, p[1] = v >> 8, p[2] = v >> 16, p[3] = v >> 24; }
+
+// The picture on the panel's screen as a 24-bit BMP.
+static esp_err_t screenshot_get(httpd_req_t *req) {
+    GUARD(req, true);
+    int w = 0, h = 0;
+    uint16_t *px = s_hooks.screenshot ? s_hooks.screenshot(&w, &h) : NULL;
+    if (!px) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        return send_error(req, "The screen couldn't be copied.");
+    }
+    size_t row = ((size_t)w * 3 + 3) & ~(size_t)3;
+    uint8_t head[54] = {'B', 'M'};
+    put32(head + 2, sizeof head + row * h);
+    put32(head + 10, sizeof head);
+    put32(head + 14, 40);
+    put32(head + 18, w);
+    put32(head + 22, h);
+    head[26] = 1, head[28] = 24;
+    put32(head + 34, row * h);
+    httpd_resp_set_type(req, "image/bmp");
+    esp_err_t e = httpd_resp_send_chunk(req, (const char *)head, sizeof head);
+    uint8_t *line = calloc(1, row);
+    for (int y = h - 1; line && e == ESP_OK && y >= 0; y--) {  // BMP rows go bottom-up
+        for (int x = 0; x < w; x++) {
+            uint16_t c = px[(size_t)y * w + x];
+            uint8_t r = c >> 11, g = (c >> 5) & 0x3f, b = c & 0x1f;
+            line[x * 3] = (b << 3) | (b >> 2), line[x * 3 + 1] = (g << 2) | (g >> 4), line[x * 3 + 2] = (r << 3) | (r >> 2);
+        }
+        e = httpd_resp_send_chunk(req, (const char *)line, row);
+    }
+    if (e == ESP_OK) e = httpd_resp_send_chunk(req, NULL, 0);
+    free(line);
+    free(px);
+    return e;
+}
+
 // --- Start ---------------------------------------------------------------------------------------
 
 static esp_err_t start(bool run_mode, const web_hooks_t *hooks) {
@@ -795,6 +834,10 @@ static esp_err_t start(bool run_mode, const web_hooks_t *hooks) {
         {.uri = "/api/update/upload", .method = HTTP_POST, .handler = update_upload_post},
     };
     for (size_t i = 0; i < sizeof routes / sizeof routes[0]; i++) httpd_register_uri_handler(server, &routes[i]);
+    if (run_mode && s_hooks.screenshot) {
+        const httpd_uri_t shot = {.uri = "/api/screenshot", .method = HTTP_GET, .handler = screenshot_get};
+        httpd_register_uri_handler(server, &shot);
+    }
     if (!run_mode) httpd_register_err_handler(server, HTTPD_404_NOT_FOUND, redirect_404);
     return ESP_OK;
 }

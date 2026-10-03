@@ -5,6 +5,10 @@ Calendar for the week, lets anyone at home add and change events right on the sc
 weather. Setup is done with a phone: join the panel's Wi-Fi, scan a QR code, *Sign in with Google*, pick
 your family calendar.
 
+![HomePlanner on the panel: a Sunday-Saturday week with color-coded family events, school and soccer calendars, and the weather](docs/screenshot.png)
+
+*Screenshot from demo mode: the names and events are made up.*
+
 This is the standalone firmware version of [HomePlanner for the Raspberry Pi](https://github.com/wentzeld/homeplanner).
 
 ## Features

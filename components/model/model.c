@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "cJSON.h"
+#include "demo.h"
 #include "esp_heap_caps.h"
 #include "esp_littlefs.h"
 #include "esp_log.h"
@@ -15,6 +16,11 @@
 #include "gcal.h"
 #include "ical.h"
 #include "net.h"
+#include "sdkconfig.h"
+
+#ifndef CONFIG_HP_DEMO
+#define CONFIG_HP_DEMO 0
+#endif
 
 static const char *TAG = "model";
 
@@ -249,6 +255,7 @@ static void save_events_cache(const cJSON *items) {
 }
 
 static void load_cache(void) {
+    if (CONFIG_HP_DEMO) return;  // demo: nothing from (or to) flash
     FILE *f = fopen(EVENTS_FILE, "r");
     if (f) {
         fseek(f, 0, SEEK_END);
@@ -282,7 +289,19 @@ static bool sync_range(hp_date_t from, hp_date_t to, bool is_window) {
     model_lock();
     s_status.syncing = true;
     model_unlock();
+#if CONFIG_HP_DEMO
+    esp_err_t e = (items = demo_family_items()) ? ESP_OK : ESP_ERR_NO_MEM;
+    snprintf(err, sizeof err, "Out of memory.");
+    for (cJSON *it = items ? items->child : NULL, *next; it; it = next) {  // like Google: only [from, to)
+        next = it->next;
+        hp_event_t ev;
+        if (hp_event_from_google(it, &s_settings.cal, &ev) &&
+            (ev.end <= hp_local_midnight(from) || ev.start >= hp_local_midnight(to)))
+            cJSON_Delete(cJSON_DetachItemViaPointer(items, it));
+    }
+#else
     esp_err_t e = gcal_list(s_settings.cal.calendar_id, hp_local_midnight(from), hp_local_midnight(to), &items, err, sizeof err);
+#endif
     model_lock();
     s_status.syncing = false;
     if (e == ESP_OK) {
@@ -299,7 +318,7 @@ static bool sync_range(hp_date_t from, hp_date_t to, bool is_window) {
         snprintf(s_status.message, sizeof s_status.message, "%s", err);
     }
     model_unlock();
-    if (e == ESP_OK && is_window) save_events_cache(items);
+    if (e == ESP_OK && is_window && !CONFIG_HP_DEMO) save_events_cache(items);
     cJSON_Delete(items);
     notify();
     return e == ESP_OK;
@@ -319,6 +338,13 @@ static void weather_task(void *arg) {
     (void)arg;
     for (;;) {
         bool ok = false;
+#if CONFIG_HP_DEMO
+        model_lock();
+        demo_weather(s_settings.fahrenheit, &s_weather);
+        model_unlock();
+        notify();
+        ok = true;
+#else
         if (s_settings.has_coords) {
             weather_report_t r;
             ok = weather_fetch(s_settings.latitude, s_settings.longitude, s_settings.fahrenheit, s_settings.cal.timezone, &r) == ESP_OK;
@@ -334,6 +360,7 @@ static void weather_task(void *arg) {
                 notify();
             }
         }
+#endif
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(ok ? WEATHER_INTERVAL_MS : WEATHER_RETRY_MS));
     }
 }
@@ -503,7 +530,11 @@ static void reload_list(void) {
         free(old);
         return;
     }
+#if CONFIG_HP_DEMO
+    demo_calendars(list);
+#else
     calendars_load(list);
+#endif
     model_lock();
     int old_count = s_ext_count;
     memcpy(old, s_ext, sizeof s_ext);
@@ -553,6 +584,23 @@ static void ext_task(void *arg) {
         vTaskDelete(NULL);
         return;
     }
+#if CONFIG_HP_DEMO
+    free(ids);
+    for (;;) {  // made-up calendars, re-dated now and then (the week moves on)
+        hp_calendars_t *list = calloc(1, sizeof *list);
+        if (list) {
+            demo_calendars(list);
+            for (int i = 0; i < list->count; i++) {
+                cJSON *items = demo_calendar_items(i);
+                install_google(list->items[i].id, items, true);
+                cJSON_Delete(items);
+            }
+        }
+        free(list);
+        notify();
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(EXT_REFRESH_MS));
+    }
+#endif
     int n = model_calendars(ids, HP_MAX_CALENDARS);
     for (int i = 0; i < n; i++) {
         if (ids[i].google) {
@@ -600,7 +648,7 @@ void model_calendar_added(const hp_calendar_t *cal, char *ics, size_t len) {
     reload_list();  // the settings page saved it already
     if (ics) {
         install(cal->id, ics, len, true);
-        save_ics(cal->id, ics, len);
+        if (!CONFIG_HP_DEMO) save_ics(cal->id, ics, len);
         free(ics);
     }
     if (cal->google && s_ext_task) xTaskNotifyGive(s_ext_task);  // fetch it from Google now
@@ -659,7 +707,7 @@ typedef struct {
 
 static void edit_task(void *arg) {
     job_t *job = arg;
-    hp_calendar_ops_t ops = gcal_ops(s_settings.cal.calendar_id);
+    hp_calendar_ops_t ops = CONFIG_HP_DEMO ? demo_ops() : gcal_ops(s_settings.cal.calendar_id);
     char msg[200] = "";
     hp_event_details_t details = {0};
     hp_edit_result_t r = HP_EDIT_FAILED;

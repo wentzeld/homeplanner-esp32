@@ -29,6 +29,9 @@ typedef struct {
     bool (*calendar_status)(const char *id, web_calendar_status_t *out);  // optional
     void (*signed_in)(void);          // a computer just signed in with the code (optional)
     void (*google_changed)(void);     // signed in to or out of Google (optional)
+    // The screen as RGB565 pixels (malloc'd; the web server frees them), or NULL. Optional: when
+    // set, GET /api/screenshot serves it as a BMP (demo builds, for README pictures).
+    uint16_t *(*screenshot)(int *width, int *height);
 } web_hooks_t;
 
 esp_err_t web_start_setup(const web_hooks_t *hooks);
